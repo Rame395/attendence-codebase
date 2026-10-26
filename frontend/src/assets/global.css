@@ -1,0 +1,154 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+/* brand theme tokens */
+@theme {
+  /* font */
+  --font-sans: "Geist Sans", "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  /* core brand */
+  --color-primary: #28469e;
+  --color-primary-hover: #1e3578;
+  --color-primary-active: #16265a;
+  --color-primary-foreground: #ffffff;
+  --color-primary-muted: #eef2fb;
+  --color-primary-light: #e8eef8;
+
+  --color-secondary: #cae8e8;
+  --color-secondary-hover: #b8dede;
+  --color-secondary-active: #a6cfcf;
+  --color-secondary-foreground: #28469e;
+  --color-secondary-muted: #eef6f6;
+  --color-secondary-light: #f4f9f9;
+
+  /* surfaces & neutrals derived from secondary */
+  --color-surface: #f4f8f8;
+  --color-surface-muted: #eef4f4;
+  --color-card: #ffffff;
+  --color-border: #d9e8e8;
+  --color-border-light: #e6f0f0;
+  --color-ring: #28469e;
+
+  /* semantic (kept for badges/status only) */
+  --color-success: #0f766e;
+  --color-success-light: #ccfbf1;
+  --color-warning: #d97706;
+  --color-danger: #dc2626;
+}
+
+/* CSS vars for non-tailwind / inline styles */
+:root {
+  --primary: #28469e;
+  --primary-hover: #1e3578;
+  --secondary: #cae8e8;
+  --secondary-hover: #b8dede;
+  --surface: #f4f8f8;
+  --border: #d9e8e8;
+  --ring: #28469e;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Geist Sans", "Geist", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  background: var(--surface);
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01" 1, "ss02" 1;
+}
+
+/* reusable form primitives - now brand-aware */
+.label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #1e293b;
+}
+
+.input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  outline: none;
+  background: white;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.input::placeholder {
+  color: #94a3b8;
+}
+
+/* scrollbar - subtle brand tint */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* map location pin marker */
+.leaflet-marker-icon.brand-location-pin-wrap {
+  background: transparent;
+  border: none;
+}
+
+.brand-location-pin {
+  position: relative;
+  width: 38px;
+  height: 48px;
+}
+
+.brand-location-pin .brand-location-pin-circle {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 9999px;
+  background: #ffffff;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 45%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #ffffff;
+}
+
+.brand-location-pin .brand-location-pin-circle img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 9999px;
+}
+
+.brand-location-pin::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 34px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 14px solid var(--primary);
+}

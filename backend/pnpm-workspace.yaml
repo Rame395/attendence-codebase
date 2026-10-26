@@ -1,0 +1,7 @@
+allowBuilds:
+  esbuild: true
+onlyBuiltDependencies:
+  - esbuild
+# Freshly-published transitive deps (e.g. @mongodb-js/saslprep) would otherwise
+# fail pnpm 11's default 24h release-age quarantine and break Docker/CI builds.
+minimumReleaseAge: 0
