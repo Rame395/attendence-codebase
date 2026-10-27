@@ -117,7 +117,14 @@ jobs:
           script_stop: true
           script: |
             set -e
+
+            # 0. Load NVM environment (Node.js, pnpm, pm2) for non-interactive SSH
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            export PATH="$PATH:$HOME/.nvm/versions/node/v20.19.6/bin:/usr/local/bin"
+
             echo "🚀 Starting Automated Deployment on $(hostname)..."
+            echo "Node: $(node -v) | pnpm: $(pnpm -v)"
 
             cd /var/www/attendance/attendence-codebase
 
