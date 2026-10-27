@@ -1,0 +1,156 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# Prevent overlapping deployments from running simultaneously
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  # =========================================================================
+  # JOB 1: Backend Integrity & Build Verification
+  # =========================================================================
+  test-backend:
+    name: Backend Typecheck & Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-backend-${{ hashFiles('backend/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-backend-
+
+      - name: Install Dependencies
+        working-directory: backend
+        run: pnpm install --frozen-lockfile
+
+      - name: Backend Typecheck (Catch TypeScript Errors & Broken Imports)
+        working-directory: backend
+        run: pnpm run typecheck
+
+      - name: Test Production Build Compilation
+        working-directory: backend
+        run: pnpm run build
+
+  # =========================================================================
+  # JOB 2: Frontend Integrity & Build Verification
+  # =========================================================================
+  test-frontend:
+    name: Frontend Typecheck & Bundle Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-frontend-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-frontend-
+
+      - name: Install Dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Frontend Production Build & Bundle Check
+        working-directory: frontend
+        run: pnpm run build
+
+  # =========================================================================
+  # JOB 3: Zero-Downtime Production Deployment
+  # =========================================================================
+  deploy:
+    name: Deploy to Hostinger VPS
+    needs: [test-backend, test-frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy & Zero-Downtime Reload via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            echo "🚀 Starting Automated Deployment on $(hostname)..."
+
+            cd /var/www/attendance/attendence-codebase
+
+            # 1. Pull latest verified commits cleanly
+            echo "📥 Fetching and syncing latest code from origin/main..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            # 2. Build Backend
+            echo "📦 Installing backend packages & building..."
+            cd /var/www/attendance/attendence-codebase/backend
+            pnpm install
+            pnpm run build
+
+            # 3. Build Frontend
+            echo "🎨 Installing frontend packages & building assets..."
+            cd /var/www/attendance/attendence-codebase/frontend
+            pnpm install
+            pnpm run build
+
+            # 4. Graceful Zero-Downtime Reload
+            echo "🔄 Reloading PM2 process..."
+            pm2 reload attendance-backend || pm2 restart attendance-backend
+
+            # 5. Automated Post-Deployment Verification (Smoke Test)
+            echo "🩺 Running live healthcheck verification..."
+            sleep 3
+            if curl -f -s http://127.0.0.1:9005/health | grep -q "ok"; then
+              echo "✅ Health check PASSED! Attendance System is running smoothly."
+            else
+              echo "❌ Health check FAILED! Application did not start properly."
+              pm2 logs attendance-backend --lines 20 --nostream
+              exit 1
+            fi
+
+            echo "🎉 Deployment successfully completed!"
