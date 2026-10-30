@@ -14,6 +14,10 @@ import {
   User,
   ChevronLeft,
   ChevronRight,
+  Bookmark,
+  RotateCcw,
+  AlertTriangle,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -92,6 +96,27 @@ export default function Employees() {
   const [viewEmployee, setViewEmployee] = useState<IEmployeeData | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<IEmployeeData | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const draftStorageKey = `attendance_draft_employee_${authUser?.email || "default"}`;
+  const [hasSavedDraft, setHasSavedDraft] = useState<boolean>(() => {
+    try {
+      return Boolean(localStorage.getItem(`attendance_draft_employee_${authUser?.email || "default"}`));
+    } catch {
+      return false;
+    }
+  });
+
+  const refreshDraftFlag = useCallback(() => {
+    try {
+      setHasSavedDraft(Boolean(localStorage.getItem(draftStorageKey)));
+    } catch {
+      setHasSavedDraft(false);
+    }
+  }, [draftStorageKey]);
+
+  const ownerHasEmployeeProfile = !authUser?.email
+    ? true
+    : employees.some((emp) => emp.email.toLowerCase() === authUser.email!.toLowerCase());
 
   // search + cascade filter anusar filter (derived state - effect chahiyna)
   const filteredEmployees = useMemo(() => {
@@ -246,9 +271,29 @@ const response = (await axiosInstance.get("/employees")) as unknown as { data: I
           >
             <Plus size={18} />
             Add Employee
+            {hasSavedDraft && (
+              <span className="ml-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-[11px] font-semibold">
+                <Bookmark size={11} /> Draft
+              </span>
+            )}
           </button>
         )}
       </div>
+
+      {/* Upfront warning if no branches exist yet */}
+      {!loading && canManageEmployees && branches.length === 0 && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 flex items-start gap-3 shadow-sm">
+          <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+            <AlertTriangle size={20} className="text-amber-600" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-amber-900">No branches added yet</p>
+            <p className="text-xs text-amber-800 mt-0.5">
+              Employees require a Branch, Department, and Designation. Please create your Branch first from the Branches menu (or inside the Add Employee form).
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Search + filters in same row: search left, selects right */}
       <div className="bg-white rounded-2xl border border-border shadow-sm p-4 flex flex-col lg:flex-row lg:items-end gap-3">
@@ -428,9 +473,19 @@ const response = (await axiosInstance.get("/employees")) as unknown as { data: I
       {/* Create Employee Modal - super_admin/hr_admin lai matra */}
       {canManageEmployees && showCreateModal && (
         <CreateEmployeeModal
-          onClose={() => setShowCreateModal(false)}
-          onCreated={() => { setShowCreateModal(false); fetchEmployees(); }}
+          onClose={() => {
+            setShowCreateModal(false);
+            refreshDraftFlag();
+          }}
+          onCreated={() => {
+            setShowCreateModal(false);
+            refreshDraftFlag();
+            fetchEmployees();
+          }}
           lockedBranch={scopedBranchId && ownBranch ? ownBranch : null}
+          draftStorageKey={draftStorageKey}
+          authUser={authUser}
+          ownerHasEmployeeProfile={ownerHasEmployeeProfile}
         />
       )}
 
@@ -530,22 +585,78 @@ function ProfileRow({ icon: Icon, label, value }: { icon: LucideIcon; label: str
   );
 }
 
+function hasEmployeeDraftContent(f: Record<string, string>): boolean {
+  return Boolean(
+    f.employeeId?.trim() ||
+    f.name?.trim() ||
+    f.email?.trim() ||
+    f.phone?.trim() ||
+    f.department?.trim() ||
+    f.designation?.trim() ||
+    f.joiningDate?.trim() ||
+    f.gender?.trim() ||
+    f.manager?.trim()
+  );
+}
+
 // Create employee modal - POST /users le Employee + User create
-function CreateEmployeeModal({ onClose, onCreated, lockedBranch }: { onClose: () => void; onCreated: () => void; lockedBranch?: IOption | null }) {
-  const [form, setForm] = useState({
-    employeeId: "",
-    name: "",
-    email: "",
-    phone: "",
-    department: "",
-    designation: "",
-    branch: lockedBranch?._id || "",
-    joiningDate: "",
-    gender: "",
-    manager: "",
-    role: "employee",
+function CreateEmployeeModal({
+  onClose,
+  onCreated,
+  lockedBranch,
+  draftStorageKey,
+  authUser,
+  ownerHasEmployeeProfile,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+  lockedBranch?: IOption | null;
+  draftStorageKey: string;
+  authUser?: { username?: string | null; email?: string | null; role?: string | null } | null;
+  ownerHasEmployeeProfile?: boolean;
+}) {
+  const [draftRestored, setDraftRestored] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem(draftStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, string>;
+        return hasEmployeeDraftContent(parsed);
+      }
+    } catch {
+      // ignore
+    }
+    return false;
   });
 
+  const [form, setForm] = useState(() => {
+    const base = {
+      employeeId: "",
+      name: "",
+      email: "",
+      phone: "",
+      department: "",
+      designation: "",
+      branch: lockedBranch?._id || "",
+      joiningDate: "",
+      gender: "",
+      manager: "",
+      role: "employee",
+    };
+    try {
+      const raw = localStorage.getItem(draftStorageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<typeof base>;
+        return {
+          ...base,
+          ...parsed,
+          branch: lockedBranch?._id || parsed.branch || "",
+        };
+      }
+    } catch {
+      // ignore invalid draft
+    }
+    return base;
+  });
 
   const [loading, setLoading] = useState(false);
   const [departments, setDepartments] = useState<{ _id: string; name: string }[]>([]);
@@ -555,6 +666,63 @@ function CreateEmployeeModal({ onClose, onCreated, lockedBranch }: { onClose: ()
   // photo - select garda instant preview, create pachhi upload huncha
   const [imageFile, setImageFile] = useState<File | null>(null);
 
+  // Auto-save form changes to localStorage draft
+  useEffect(() => {
+    try {
+      if (hasEmployeeDraftContent(form)) {
+        localStorage.setItem(draftStorageKey, JSON.stringify(form));
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [form, draftStorageKey]);
+
+  const handleSaveAsDraft = () => {
+    try {
+      localStorage.setItem(draftStorageKey, JSON.stringify(form));
+      toast.success("Employee details saved as draft! You can continue anytime.");
+      onClose();
+    } catch {
+      toast.error("Failed to save draft");
+    }
+  };
+
+  const handleClearDraft = () => {
+    try {
+      localStorage.removeItem(draftStorageKey);
+    } catch {
+      // ignore
+    }
+    setDraftRestored(false);
+    setForm({
+      employeeId: "",
+      name: "",
+      email: "",
+      phone: "",
+      department: "",
+      designation: "",
+      branch: lockedBranch?._id || (branches.length === 1 ? branches[0]._id : ""),
+      joiningDate: "",
+      gender: "",
+      manager: "",
+      role: "employee",
+    });
+    setImageFile(null);
+    toast.success("Draft cleared");
+  };
+
+  const handleFillOwnerDetails = () => {
+    if (!authUser) return;
+    setForm((f) => ({
+      ...f,
+      employeeId: f.employeeId || "EMP-001",
+      name: authUser.username || f.name || "Owner",
+      email: authUser.email || f.email,
+      joiningDate: f.joiningDate || toLocalDateInput(new Date()),
+    }));
+    toast.success("Filled your account details! Select Branch, Department & Designation to complete.");
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -562,11 +730,30 @@ function CreateEmployeeModal({ onClose, onCreated, lockedBranch }: { onClose: ()
           axiosInstance.get("/branches"),
           axiosInstance.get("/employees", { params: { managersOnly: true } }),
         ]);
-        setBranches(branchRes.data || []);
+        const branchList = (branchRes.data || []) as { _id: string; name: string }[];
+        setBranches(branchList);
         setEmployees((empRes.data || []).map((e: { _id: string; name: string }) => ({ _id: e._id, name: e.name })));
+
+        const initialBranch = lockedBranch?._id || form.branch || (branchList.length === 1 ? branchList[0]._id : "");
+        if (initialBranch) {
+          if (!form.branch) {
+            setForm((f) => ({ ...f, branch: initialBranch }));
+          }
+          const deptRes = (await axiosInstance.get("/departments", { params: { branch: initialBranch } })) as {
+            data: { _id: string; name: string }[];
+          };
+          setDepartments(deptRes.data || []);
+          if (form.department) {
+            const desigRes = (await axiosInstance.get("/designations", {
+              params: { branch: initialBranch, department: form.department },
+            })) as { data: { _id: string; name: string }[] };
+            setDesignations(desigRes.data || []);
+          }
+        }
       } catch { /* silently fail */ }
     };
-    fetchData();
+    void fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchBranches = async () => {
@@ -648,6 +835,11 @@ function CreateEmployeeModal({ onClose, onCreated, lockedBranch }: { onClose: ()
           toast.error("Employee created but photo upload failed");
         }
       }
+      try {
+        localStorage.removeItem(draftStorageKey);
+      } catch {
+        // ignore
+      }
       toast.success((res as { message?: string })?.message || "Employee created successfully — login credentials sent via email");
       onCreated();
     } catch (error) {
@@ -661,10 +853,51 @@ function CreateEmployeeModal({ onClose, onCreated, lockedBranch }: { onClose: ()
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-slate-100">
-          <h3 className="font-bold text-lg text-slate-900">Add New Employee</h3>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h3 className="font-bold text-lg text-slate-900">Add New Employee</h3>
+            {draftRestored && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-medium text-amber-700">
+                <Bookmark size={11} /> Draft Restored
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {hasEmployeeDraftContent(form) && (
+              <button
+                type="button"
+                onClick={handleClearDraft}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                title="Clear all fields and discard draft"
+              >
+                <RotateCcw size={13} /> Clear
+              </button>
+            )}
+            <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
+          </div>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {/* Quick-fill banner for Owner / Super Admin to create their own Employee profile */}
+          {authUser?.email && !ownerHasEmployeeProfile && form.email.toLowerCase() !== authUser.email.toLowerCase() && (
+            <div className="rounded-xl border border-primary/25 bg-secondary/40 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div className="flex items-start gap-2.5">
+                <Sparkles size={16} className="text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-slate-800">Adding your own Employee profile?</p>
+                  <p className="text-[11px] text-slate-600">
+                    Link an employee profile directly to your account ({authUser.email}).
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleFillOwnerDetails}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-primary text-white text-xs font-semibold hover:opacity-90 transition-opacity"
+              >
+                Use My Account
+              </button>
+            </div>
+          )}
+
           {/* Photo upload + instant preview */}
           <ProfileImageUpload
             name={form.name || "New Employee"}
@@ -757,14 +990,24 @@ function CreateEmployeeModal({ onClose, onCreated, lockedBranch }: { onClose: ()
           </div>
           {/* Manager select - employee ko lagi */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Manager</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Reporting Manager (Optional)</label>
             <select value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white">
-              <option value="">No manager</option>
+              <option value="">No Manager (Reports directly to Admin / HR)</option>
               {employees.map((emp) => <option key={emp._id} value={emp._id}>{emp.name}</option>)}
             </select>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Assigns a team supervisor. Only staff created with the &apos;Manager&apos; role appear in this list.
+            </p>
           </div>
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 px-5 py-2.5 rounded-xl border border-border text-sm text-slate-600 hover:bg-secondary/30">Cancel</button>
+          <div className="flex flex-wrap gap-2.5 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm text-slate-600 hover:bg-secondary/30">Cancel</button>
+            <button
+              type="button"
+              onClick={handleSaveAsDraft}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 text-sm font-medium hover:bg-amber-100 transition-colors"
+            >
+              <Bookmark size={15} /> Save as Draft
+            </button>
             <button type="submit" disabled={loading} className="flex-1 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-medium disabled:opacity-50">
               {loading ? "Creating..." : "Create Employee"}
             </button>
@@ -1008,9 +1251,9 @@ function EditEmployeeModal({ employee, onClose, onUpdated, lockedBranch, manager
           <div className="grid grid-cols-2 gap-4">
             <GenderSelect value={form.gender} onChange={(v) => setForm({ ...form, gender: v })} required />
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Manager</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Reporting Manager</label>
               <select value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })} disabled={managerMode} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white disabled:bg-slate-50 disabled:text-slate-400">
-                <option value="">No manager</option>
+                <option value="">No Manager (Reports directly to Admin / HR)</option>
                 {employees.filter((emp) => emp._id !== employee._id).map((emp) => (
                   <option key={emp._id} value={emp._id}>{emp.name}</option>
                 ))}

@@ -334,15 +334,27 @@ class EmployeeController {
             role: (linkedUser as any).role || null,
           });
           try {
-            const reset =
-              await AuthService.resetUserCredentials(linkedUser._id, {
-                newEmail,
-                name: req.body?.name || oldEmployee?.name || newEmail,
-                updatedBy: req.loggedInUser?._id,
-                forceChange: true,
+            const isSelfOrSuperAdmin =
+              (linkedUser as any).role === "super_admin" ||
+              String(linkedUser._id) === String(req.loggedInUser?._id);
+
+            if (isSelfOrSuperAdmin) {
+              // Do not reset password or invalidate session when Owner/Admin updates their own email
+              await UserModel.findByIdAndUpdate(linkedUser._id, {
+                $set: { email: newEmail.toLowerCase(), updatedBy: req.loggedInUser?._id || null },
               });
-            resetEmailSent = reset.emailSent;
-            resetPassword = reset.temporaryPassword;
+              resetEmailSent = true;
+            } else {
+              const reset =
+                await AuthService.resetUserCredentials(linkedUser._id, {
+                  newEmail,
+                  name: req.body?.name || oldEmployee?.name || newEmail,
+                  updatedBy: req.loggedInUser?._id,
+                  forceChange: true,
+                });
+              resetEmailSent = reset.emailSent;
+              resetPassword = reset.temporaryPassword;
+            }
           } catch (resetError) {
             await UserDirectoryService.releaseEmail(newEmail);
             throw resetError;
@@ -446,29 +458,42 @@ res.json({
       // soft delete - history surakshit, removed employee report ma "Removed" highlight huncha
       const employee = await EmployeeService.softDeleteEmployee(id);
 
-      // linked user account delete - login banda + email free (notification delete garna user id pahila liyeko)
-      const foundUsers = await UserModel.find({ employee: id }).select("_id").lean();
-      const userIds: mongoose.Types.ObjectId[] = foundUsers.map((u) => u._id);
+      // linked user account delete - login banda + email free (super_admin ko login account kahilyai delete nagarne, unlink matra garne)
+      const foundUsers = await UserModel.find({ employee: id }).select("_id role").lean();
+      const deletableUserIds: mongoose.Types.ObjectId[] = foundUsers
+        .filter((u: any) => u.role !== "super_admin")
+        .map((u: any) => u._id);
+      const superAdminUserIds: mongoose.Types.ObjectId[] = foundUsers
+        .filter((u: any) => u.role === "super_admin")
+        .map((u: any) => u._id);
 
-      if (userIds.length > 0) {
-        await NotificationModel.deleteMany({ user: { $in: userIds } });
+      if (superAdminUserIds.length > 0) {
+        await UserModel.updateMany(
+          { _id: { $in: superAdminUserIds } },
+          { $set: { employee: null } },
+        );
+        superAdminUserIds.forEach((uid) => invalidateUserSession(uid.toString()));
+      }
+
+      if (deletableUserIds.length > 0) {
+        await NotificationModel.deleteMany({ user: { $in: deletableUserIds } });
       }
       // arko employee ko manager thiyo bhane unlink garne - dangling ref nagarne
       await EmployeeModel.updateMany({ manager: id }, { $unset: { manager: 1 } });
       // aru employee ko leave/correction aruko reviewer thiyo bhane pani unlink garne
-      if (userIds.length > 0) {
+      if (deletableUserIds.length > 0) {
         await LeaveRequestModel.updateMany(
-          { reviewedBy: { $in: userIds } },
+          { reviewedBy: { $in: deletableUserIds } },
           { $unset: { reviewedBy: 1, reviewedAt: 1 } },
         );
         await AttendanceCorrectionModel.updateMany(
-          { reviewedBy: { $in: userIds } },
+          { reviewedBy: { $in: deletableUserIds } },
           { $unset: { reviewedBy: 1, reviewedAt: 1 } },
         );
+        await UserModel.deleteMany({ _id: { $in: deletableUserIds } });
+        // linked login ko purano token pani dead hos
+        deletableUserIds.forEach((uid) => invalidateUserSession(uid.toString()));
       }
-      await UserModel.deleteMany({ employee: id });
-      // linked login ko purano token pani dead hos
-      userIds.forEach((uid) => invalidateUserSession(uid.toString()));
 
       // audit log - employee deleted
       AuditLogService.logAction(

@@ -231,17 +231,28 @@ class AuthService {
       };
     }
 
-    // Check user email
-    const existingUser =
+    // Check user email - if an existing user in this company (e.g. Owner / super_admin)
+    // does not have an active Employee record linked yet, allow creating & linking their Employee profile!
+    const existingUser: any =
       await UserModel.findOne({
         email: data.email.toLowerCase(),
       });
 
+    let linkingExistingUser = false;
     if (existingUser) {
-      throw {
-        code: 409,
-        message: "Email already registered",
-      };
+      if (existingUser.employee) {
+        const linkedEmp = await EmployeeModel.findOne({
+          _id: existingUser.employee,
+          isDeleted: { $ne: true },
+        });
+        if (linkedEmp) {
+          throw {
+            code: 409,
+            message: "Email already registered",
+          };
+        }
+      }
+      linkingExistingUser = true;
     }
 
     // username unique chahiyo - collision ma number append
@@ -253,19 +264,23 @@ class AuthService {
       let candidate = username;
       let suffix = 1;
       while (true) {
-        const existingUsername =
+        const existingUsername: any =
           await UserModel.findOne({
             username: candidate,
           });
-        if (!existingUsername) break;
+        if (!existingUsername || (linkingExistingUser && String(existingUsername._id) === String(existingUser._id))) {
+          break;
+        }
         candidate = `${username}-${suffix}`;
         suffix += 1;
       }
       username = candidate;
     }
 
-    // email globally free chha ki chhaina - directory check
-    await CompanyService.assertEmailAvailable(data.email);
+    // email globally free chha ki chhaina - directory check (skip if linking to existing tenant user)
+    if (!linkingExistingUser) {
+      await CompanyService.assertEmailAvailable(data.email);
+    }
 
     // Check employee - removed (soft deleted) records sanga clash hudaina
     const existingEmployee =
@@ -389,24 +404,36 @@ class AuthService {
 
     // Create employee + user (fail bhaye claim rollback)
     const targetDb = currentDbName() || CENTRAL_DB_NAME;
-    const newUserId = new mongoose.Types.ObjectId();
-    await UserDirectoryService.claimEmail({
-      email: data.email,
-      dbName: targetDb,
-      userId: newUserId,
-      company: (data.companyId as any) || null,
-      role: data.role,
-    });
-
-    // phone global lock - create fail bhaye release
-    if (data.phone) {
-      await PhoneDirectoryService.claimPhone({
-        phone: data.phone,
+    const newUserId = linkingExistingUser ? existingUser._id : new mongoose.Types.ObjectId();
+    if (!linkingExistingUser) {
+      await UserDirectoryService.claimEmail({
+        email: data.email,
         dbName: targetDb,
         userId: newUserId,
-        employeeId: null,
         company: (data.companyId as any) || null,
+        role: data.role,
       });
+    }
+
+    // phone global lock - create fail bhaye release
+    let phoneNewlyClaimed = false;
+    if (data.phone) {
+      const existingPhone = await PhoneDirectoryService.findByPhone(data.phone);
+      const ownedBySameTenantOrUser =
+        existingPhone &&
+        existingPhone.dbName === targetDb &&
+        (!existingPhone.employeeId || (linkingExistingUser && String(existingPhone.userId) === String(existingUser._id)));
+
+      if (!ownedBySameTenantOrUser) {
+        await PhoneDirectoryService.claimPhone({
+          phone: data.phone,
+          dbName: targetDb,
+          userId: newUserId,
+          employeeId: null,
+          company: (data.companyId as any) || existingUser?.company || null,
+        });
+        phoneNewlyClaimed = true;
+      }
     }
 
     let employee: any;
@@ -432,62 +459,84 @@ class AuthService {
           createdBy,
         });
 
-      // username chha bhane matra save garne (sparse unique index)
-      user =
-        await UserModel.create({
-          _id: newUserId,
+      if (linkingExistingUser) {
+        existingUser.employee = employee._id;
+        if (!existingUser.username && username) {
+          existingUser.username = username;
+        }
+        // Keep super_admin role intact if Owner is creating their own employee profile
+        if (existingUser.role !== "super_admin" && data.role) {
+          existingUser.role = data.role;
+        }
+        await existingUser.save();
+        user = existingUser;
+        invalidateUserSession(String(existingUser._id));
+      } else {
+        // username chha bhane matra save garne (sparse unique index)
+        user =
+          await UserModel.create({
+            _id: newUserId,
 
-          email: data.email.toLowerCase(),
+            email: data.email.toLowerCase(),
 
-          ...(username
-            ? { username }
-            : {}),
+            ...(username
+              ? { username }
+              : {}),
 
-          password: hashedPassword,
+            password: hashedPassword,
 
-          role: data.role,
+            role: data.role,
 
-          employee: employee._id,
+            employee: employee._id,
 
-          company: (data.companyId as any) || null,
+            company: (data.companyId as any) || null,
 
-          status: "active",
+            status: "active",
 
-          createdBy,
+            createdBy,
 
-          mustChangePassword: true,
-        });
+            mustChangePassword: true,
+          });
+      }
     } catch (createError) {
-      await UserDirectoryService.releaseEmail(data.email);
-      if (data.phone) await PhoneDirectoryService.releasePhone(data.phone);
+      if (!linkingExistingUser) {
+        await UserDirectoryService.releaseEmail(data.email);
+      }
+      if (data.phone && phoneNewlyClaimed) await PhoneDirectoryService.releasePhone(data.phone);
       throw createError;
     }
 
     // directory role confirm (claim ma diisakeko - best-effort sync)
-    await UserDirectoryService.confirmEntry(data.email, { role: data.role, userId: newUserId });
+    await UserDirectoryService.confirmEntry(data.email, {
+      role: linkingExistingUser ? existingUser.role : data.role,
+      userId: newUserId,
+    });
 
     // phone entry ma employee id link
     if (data.phone && employee) {
       await PhoneDirectoryService.confirmEmployee(data.phone, employee._id);
     }
 
-    // Send email - email fail bhaye pani user creation fail hunu hudaina
+    // Send email - skip welcome temp password email if linking to an existing active user account
     let emailSent = true;
-    try {
-      await MailService.sendWelcomeEmail(
-        data.email,
-        data.name,
-        temporaryPassword,
-      );
-    } catch (mailError: any) {
-      emailSent = false;
-      console.error("Welcome email failed:", mailError?.message || mailError);
+    if (!linkingExistingUser) {
+      try {
+        await MailService.sendWelcomeEmail(
+          data.email,
+          data.name,
+          temporaryPassword,
+        );
+      } catch (mailError: any) {
+        emailSent = false;
+        console.error("Welcome email failed:", mailError?.message || mailError);
+      }
     }
 
     return {
       user,
       employee,
       emailSent,
+      linkedExistingAccount: linkingExistingUser,
     };
   }
 

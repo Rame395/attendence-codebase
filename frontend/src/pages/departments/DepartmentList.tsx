@@ -10,6 +10,7 @@ import {
   MapPin,
   ChevronLeft,
   ChevronRight,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
@@ -49,6 +50,8 @@ interface IDepartmentUser {
 // yo page le departments dekhauxa, edit garna dinxa, click garyo bhane tyo department ka users dekhauxa
 export default function DepartmentList() {
   const [departments, setDepartments] = useState<IDepartment[]>([]);
+  const [branchCount, setBranchCount] = useState<number | null>(null);
+  const [showBranchModal, setShowBranchModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<IDepartment | null>(null);
@@ -68,8 +71,12 @@ export default function DepartmentList() {
   const fetchDepartments = async () => {
     try {
       setLoading(true);
-      const res = await axiosInstance.get("/departments");
-      setDepartments(res.data || []);
+      const [deptRes, branchRes] = await Promise.all([
+        axiosInstance.get("/departments"),
+        axiosInstance.get("/branches").catch(() => ({ data: [] })),
+      ]);
+      setDepartments(deptRes.data || []);
+      setBranchCount((branchRes.data || []).length);
     } catch {
       toast.error("Failed to fetch departments");
     } finally {
@@ -203,6 +210,28 @@ export default function DepartmentList() {
           <Plus size={18} /> Add Department
         </button>
       </div>
+
+      {!loading && branchCount === 0 && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+              <AlertTriangle size={20} className="text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-amber-900">No branches added yet</p>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Every department must belong to a branch. Please add at least one Branch before creating a Department.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowBranchModal(true)}
+            className="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition-colors"
+          >
+            <Plus size={15} /> Create Branch First
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -429,6 +458,17 @@ export default function DepartmentList() {
         onCreated={fetchDepartments}
         initial={editItem ? { name: editItem.name, code: editItem.code, description: editItem.description || "", branch: editItem.branch?._id || "" } satisfies EntityCreateData : null}
         editId={editItem?._id}
+      />
+
+      <EntityCreateModal
+        key={`branch-quick-${showBranchModal}`}
+        entity="branch"
+        open={showBranchModal}
+        onClose={() => setShowBranchModal(false)}
+        onCreated={() => {
+          setShowBranchModal(false);
+          void fetchDepartments();
+        }}
       />
 
       <ConfirmDialog

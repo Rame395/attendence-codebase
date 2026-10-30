@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2, BriefcaseBusiness, Edit3, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Trash2, BriefcaseBusiness, Edit3, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import EntityCreateModal, { type EntityCreateData } from "../../components/common/EntityCreateModal";
@@ -25,6 +25,9 @@ interface IDesignation {
 // yo page le designations dekhauxa ra CRUD garna dinxa
 export default function Designations() {
   const [designations, setDesignations] = useState<IDesignation[]>([]);
+  const [branchCount, setBranchCount] = useState<number | null>(null);
+  const [deptCount, setDeptCount] = useState<number | null>(null);
+  const [quickEntityModal, setQuickEntityModal] = useState<"branch" | "department" | null>(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<IDesignation | null>(null);
@@ -55,8 +58,14 @@ export default function Designations() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await axiosInstance.get("/designations");
+      const [res, branchRes, deptRes] = await Promise.all([
+        axiosInstance.get("/designations"),
+        axiosInstance.get("/branches").catch(() => ({ data: [] })),
+        axiosInstance.get("/departments").catch(() => ({ data: [] })),
+      ]);
       setDesignations(res.data || []);
+      setBranchCount((branchRes.data || []).length);
+      setDeptCount((deptRes.data || []).length);
     } catch {
       toast.error("Failed to fetch designations");
     } finally {
@@ -99,6 +108,50 @@ export default function Designations() {
           <Plus size={18} /> Add Designation
         </button>
       </div>
+
+      {!loading && branchCount === 0 && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+              <AlertTriangle size={20} className="text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-amber-900">No branches added yet</p>
+              <p className="text-xs text-amber-800 mt-0.5">
+                You must create a Branch and Department before adding a Designation.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setQuickEntityModal("branch")}
+            className="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition-colors"
+          >
+            <Plus size={15} /> Create Branch First
+          </button>
+        </div>
+      )}
+
+      {!loading && branchCount !== null && branchCount > 0 && deptCount === 0 && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
+              <AlertTriangle size={20} className="text-amber-600" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-amber-900">No departments added yet</p>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Every designation belongs to a department. Please add a Department first.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setQuickEntityModal("department")}
+            className="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition-colors"
+          >
+            <Plus size={15} /> Create Department First
+          </button>
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
         {loading ? (
@@ -185,6 +238,19 @@ export default function Designations() {
         initial={editItem ? { name: editItem.name, code: editItem.code || "", branch: editItem.branch?._id || "", department: editItem.department?._id || "" } satisfies EntityCreateData : null}
         editId={editItem?._id}
       />
+
+      {quickEntityModal && (
+        <EntityCreateModal
+          key={`quick-${quickEntityModal}`}
+          entity={quickEntityModal}
+          open={!!quickEntityModal}
+          onClose={() => setQuickEntityModal(null)}
+          onCreated={() => {
+            setQuickEntityModal(null);
+            void fetchData();
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={!!deleteTarget}

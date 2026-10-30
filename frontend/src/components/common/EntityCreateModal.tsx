@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Navigation, Crosshair, Building2, Plus } from "lucide-react";
+import { X, Navigation, Crosshair, Building2, Plus, AlertTriangle, Bookmark, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../config/ApiClient";
 import GeofenceMap from "./GeofenceMap";
@@ -50,6 +50,21 @@ interface EntityCreateModalProps {
   extraPayload?: Record<string, string | undefined>;
 }
 
+function getEntityDraftKey(entity: EntityType): string {
+  return `attendance_draft_entity_${entity}`;
+}
+
+function hasEntityDraftContent(data: EntityCreateData): boolean {
+  return Boolean(
+    data.name?.trim() ||
+    data.code?.trim() ||
+    data.description?.trim() ||
+    data.address?.trim() ||
+    data.phone?.trim() ||
+    (data.departments && data.departments.some((d) => d.name?.trim() || d.code?.trim() || d.designations?.trim()))
+  );
+}
+
 // sabai entity (dept/designation/branch) ko lagi eklo shared create/edit modal
 export default function EntityCreateModal({
   entity,
@@ -60,60 +75,200 @@ export default function EntityCreateModal({
   editId = null,
   extraPayload,
 }: EntityCreateModalProps) {
-  const [form, setForm] = useState<EntityCreateData>(() => ({
-    name: initial?.name || "",
-    code: initial?.code || "",
-    description: initial?.description || "",
-    address: initial?.address || "",
-    phone: (initial?.phone || "").replace(/\D/g, ""),
-    latitude: initial?.latitude || 0,
-    longitude: initial?.longitude || 0,
-    geofenceRadius: initial?.geofenceRadius || 20,
-    branch: initial?.branch || extraPayload?.branch || "",
-    department: initial?.department || extraPayload?.department || "",
-    departments: [],
-  }));
+  const [draftRestored, setDraftRestored] = useState<boolean>(() => {
+    if (editId || initial) return false;
+    try {
+      const raw = localStorage.getItem(getEntityDraftKey(entity));
+      if (raw) {
+        const parsed = JSON.parse(raw) as EntityCreateData;
+        return hasEntityDraftContent(parsed);
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  });
+
+  const [form, setForm] = useState<EntityCreateData>(() => {
+    const base: EntityCreateData = {
+      name: initial?.name || "",
+      code: initial?.code || "",
+      description: initial?.description || "",
+      address: initial?.address || "",
+      phone: (initial?.phone || "").replace(/\D/g, ""),
+      latitude: initial?.latitude || 0,
+      longitude: initial?.longitude || 0,
+      geofenceRadius: initial?.geofenceRadius || 20,
+      branch: initial?.branch || extraPayload?.branch || "",
+      department: initial?.department || extraPayload?.department || "",
+      departments: [],
+    };
+    if (!editId && !initial) {
+      try {
+        const raw = localStorage.getItem(getEntityDraftKey(entity));
+        if (raw) {
+          const parsed = JSON.parse(raw) as Partial<EntityCreateData>;
+          return {
+            ...base,
+            ...parsed,
+            branch: extraPayload?.branch || parsed.branch || base.branch,
+            department: extraPayload?.department || parsed.department || base.department,
+          };
+        }
+      } catch {
+        // ignore corrupt draft
+      }
+    }
+    return base;
+  });
   const [saving, setSaving] = useState(false);
   const [branches, setBranches] = useState<IOption[]>([]);
+  const [branchesLoaded, setBranchesLoaded] = useState(false);
   const [departments, setDepartments] = useState<IOption[]>([]);
+  const [departmentsLoaded, setDepartmentsLoaded] = useState(false);
+  const [showQuickBranchModal, setShowQuickBranchModal] = useState(false);
+  const [showQuickDeptModal, setShowQuickDeptModal] = useState(false);
   // radius input lai text-like controlled rakhnu (khali gareko bela 20 ma na phirne hami)
-  const [radiusInput, setRadiusInput] = useState<string>(String(initial?.geofenceRadius || 20));
+  const [radiusInput, setRadiusInput] = useState<string>(String(form.geofenceRadius || initial?.geofenceRadius || 20));
+
+  // Auto-save draft while typing in create mode
+  useEffect(() => {
+    if (!open || editId) return;
+    try {
+      if (hasEntityDraftContent(form)) {
+        localStorage.setItem(getEntityDraftKey(entity), JSON.stringify(form));
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, [form, open, editId, entity]);
+
+  const clearDraft = () => {
+    try {
+      localStorage.removeItem(getEntityDraftKey(entity));
+    } catch {
+      // ignore
+    }
+    setDraftRestored(false);
+    setForm({
+      name: "",
+      code: "",
+      description: "",
+      address: "",
+      phone: "",
+      latitude: 0,
+      longitude: 0,
+      geofenceRadius: 20,
+      branch: extraPayload?.branch || (branches.length === 1 ? branches[0]._id : ""),
+      department: extraPayload?.department || "",
+      departments: [],
+    });
+    setRadiusInput("20");
+    toast.success("Draft cleared");
+  };
+
+  const handleSaveAsDraft = () => {
+    try {
+      localStorage.setItem(getEntityDraftKey(entity), JSON.stringify(form));
+      toast.success(`${TITLES[entity]} saved as draft! You can continue anytime.`);
+      onClose();
+    } catch {
+      toast.error("Failed to save draft");
+    }
+  };
+
+  const loadBranches = async (selectBranchId?: string) => {
+    try {
+      const res = (await axiosInstance.get("/branches")) as { data: IOption[] };
+      const list = res.data || [];
+      setBranches(list);
+      setBranchesLoaded(true);
+      if (selectBranchId) {
+        setForm((f) => ({ ...f, branch: selectBranchId, department: "" }));
+      } else if (list.length === 1 && !form.branch && !editId) {
+        setForm((f) => ({ ...f, branch: list[0]._id }));
+      }
+    } catch {
+      toast.error("Failed to fetch branches");
+      setBranchesLoaded(true);
+    }
+  };
 
   // department/designation create/edit garda branch dropdown ko lagi
   useEffect(() => {
+    if (!open) return;
     if (entity !== "department" && entity !== "designation") return;
     let active = true;
     void (async () => {
       try {
         const res = (await axiosInstance.get("/branches")) as { data: IOption[] };
-        if (active) setBranches(res.data || []);
+        const list = res.data || [];
+        if (!active) return;
+        setBranches(list);
+        setBranchesLoaded(true);
+        if (list.length === 1 && !form.branch && !editId) {
+          setForm((f) => ({ ...f, branch: list[0]._id }));
+        }
       } catch {
-        toast.error("Failed to fetch branches");
+        if (active) {
+          toast.error("Failed to fetch branches");
+          setBranchesLoaded(true);
+        }
       }
     })();
     return () => {
       active = false;
     };
-  }, [entity]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity, open]);
+
+  const loadDepartments = async (branchId: string, selectDeptId?: string) => {
+    try {
+      const res = (await axiosInstance.get("/departments", {
+        params: { branch: branchId },
+      })) as { data: IOption[] };
+      const list = res.data || [];
+      setDepartments(list);
+      setDepartmentsLoaded(true);
+      if (selectDeptId) {
+        setForm((f) => ({ ...f, department: selectDeptId }));
+      } else if (list.length === 1 && !form.department && !editId) {
+        setForm((f) => ({ ...f, department: list[0]._id }));
+      }
+    } catch {
+      toast.error("Failed to fetch departments");
+      setDepartmentsLoaded(true);
+    }
+  };
 
   // designation garda branch anusar department options
   useEffect(() => {
-    if (entity !== "designation" || !form.branch) return;
+    if (!open || entity !== "designation" || !form.branch) return;
     let active = true;
     void (async () => {
       try {
         const res = (await axiosInstance.get("/departments", {
           params: { branch: form.branch },
         })) as { data: IOption[] };
-        if (active) setDepartments(res.data || []);
+        const list = res.data || [];
+        if (!active) return;
+        setDepartments(list);
+        setDepartmentsLoaded(true);
+        if (list.length === 1 && !form.department && !editId) {
+          setForm((f) => ({ ...f, department: list[0]._id }));
+        }
       } catch {
-        toast.error("Failed to fetch departments");
+        if (active) {
+          toast.error("Failed to fetch departments");
+          setDepartmentsLoaded(true);
+        }
       }
     })();
     return () => {
       active = false;
     };
-  }, [entity, form.branch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entity, form.branch, open]);
 
   if (!open) return null;
 
@@ -231,12 +386,12 @@ export default function EntityCreateModal({
       payload.description = form.description.trim();
     }
 
-    // branch/department lai branch liyeko - create ma cascade, edit ma form select priority
+    // branch/department lai branch liyeko - form select priority, fallback extraPayload
     if (entity === "department" || entity === "designation") {
-      payload.branch = ((!editId && extraPayload?.branch) || form.branch) || "";
+      payload.branch = (form.branch || extraPayload?.branch) || "";
     }
     if (entity === "designation") {
-      payload.department = ((!editId && extraPayload?.department) || form.department) || "";
+      payload.department = (form.department || extraPayload?.department) || "";
     }
 
     try {
@@ -276,6 +431,11 @@ export default function EntityCreateModal({
             desigCount ? ` and ${desigCount} designation${desigCount !== 1 ? "s" : ""}` : ""
           }`,
         );
+        try {
+          localStorage.removeItem(getEntityDraftKey(entity));
+        } catch {
+          // ignore
+        }
         onClose();
         onCreated(branchId);
         return;
@@ -288,6 +448,13 @@ export default function EntityCreateModal({
       toast.success(
         res?.data?.name ? `${res.data.name} ${editId ? "updated" : "added"}` : `${TITLES[entity]} ${editId ? "updated" : "added"}`,
       );
+      if (!editId) {
+        try {
+          localStorage.removeItem(getEntityDraftKey(entity));
+        } catch {
+          // ignore
+        }
+      }
       onClose();
       onCreated(res?.data?._id || editId || undefined);
     } catch (error) {
@@ -301,11 +468,146 @@ export default function EntityCreateModal({
     <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[70] p-4 overflow-y-auto">
       <div className="bg-white rounded-2xl shadow-xl w-full my-8 max-w-lg">
         <div className="flex items-center justify-between p-6 border-b border-slate-100">
-          <h3 className="font-bold text-lg text-slate-900">{editId ? "Edit" : "Add"} {TITLES[entity]}</h3>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h3 className="font-bold text-lg text-slate-900">{editId ? "Edit" : "Add"} {TITLES[entity]}</h3>
+            {!editId && draftRestored && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-medium text-amber-700">
+                <Bookmark size={11} /> Draft Restored
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {!editId && hasEntityDraftContent(form) && (
+              <button
+                type="button"
+                onClick={clearDraft}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                title="Clear all fields and discard draft"
+              >
+                <RotateCcw size={13} /> Clear
+              </button>
+            )}
+            <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
+          </div>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-4">
+          {/* Upfront warning if no branches exist when creating a Department or Designation */}
+          {(entity === "department" || entity === "designation") && branchesLoaded && branches.length === 0 && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-amber-900">No branches added yet!</p>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    You must create a Branch before adding a {TITLES[entity]}. Click the button to create a branch right now.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQuickBranchModal(true)}
+                className="shrink-0 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition-colors"
+              >
+                <Plus size={14} /> Add Branch First
+              </button>
+            </div>
+          )}
+
+          {/* Upfront warning if no departments exist for the selected branch when creating a Designation */}
+          {entity === "designation" && form.branch && departmentsLoaded && departments.length === 0 && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-xs font-bold text-amber-900">No departments in this branch yet!</p>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    Create a Department for this branch first so you can add a Designation.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQuickDeptModal(true)}
+                className="shrink-0 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition-colors"
+              >
+                <Plus size={14} /> Add Department First
+              </button>
+            </div>
+          )}
+
+          {/* Show Branch / Department selector FIRST for department & designation so prerequisites are obvious immediately */}
+          {entity === "department" && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-sm font-medium text-slate-700">Branch</label>
+                <button
+                  type="button"
+                  onClick={() => setShowQuickBranchModal(true)}
+                  className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
+                >
+                  <Plus size={12} /> New Branch
+                </button>
+              </div>
+              <select value={form.branch || ""} onChange={(e) => handleBranchChange(e.target.value)} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white" required>
+                <option value="">{branchesLoaded && branches.length === 0 ? "⚠️ No branches added — create a branch first" : "Select branch"}</option>
+                {branches.map((b) => (
+                  <option key={b._id} value={b._id}>{b.name}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400 mt-1">Which branch/office does this department belong to?</p>
+            </div>
+          )}
+
+          {entity === "designation" && (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-slate-700">Branch</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickBranchModal(true)}
+                    className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
+                  >
+                    <Plus size={12} /> New
+                  </button>
+                </div>
+                <select value={form.branch || ""} onChange={(e) => handleBranchChange(e.target.value)} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white" required>
+                  <option value="">{branchesLoaded && branches.length === 0 ? "⚠️ No branches added" : "Select branch"}</option>
+                  {branches.map((b) => (
+                    <option key={b._id} value={b._id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-slate-700">Department</label>
+                  {form.branch && (
+                    <button
+                      type="button"
+                      onClick={() => setShowQuickDeptModal(true)}
+                      className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
+                    >
+                      <Plus size={12} /> New
+                    </button>
+                  )}
+                </div>
+                <select value={form.department || ""} disabled={!form.branch} onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white disabled:bg-slate-50 disabled:text-slate-400" required>
+                  <option value="">
+                    {!form.branch
+                      ? "Select a branch first"
+                      : departmentsLoaded && departments.length === 0
+                        ? "⚠️ No departments in branch"
+                        : "Select department"}
+                  </option>
+                  {departments.map((d) => (
+                    <option key={d._id} value={d._id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+
+          <div className={`grid ${entity === "designation" ? "grid-cols-1" : "grid-cols-2"} gap-4`}>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
               <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
@@ -430,58 +732,56 @@ export default function EntityCreateModal({
               )}
             </>
           ) : (
-            <>
-              {entity === "department" && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Branch</label>
-                  <select value={form.branch || ""} onChange={(e) => handleBranchChange(e.target.value)} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white" required>
-                    <option value="">Select branch</option>
-                    {branches.map((b) => (
-                      <option key={b._id} value={b._id}>{b.name}</option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-slate-400 mt-1">Which office does this department belong to?</p>
-                </div>
-              )}
-
-              {entity === "designation" && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Branch</label>
-                    <select value={form.branch || ""} onChange={(e) => handleBranchChange(e.target.value)} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white" required>
-                      <option value="">Select branch</option>
-                      {branches.map((b) => (
-                        <option key={b._id} value={b._id}>{b.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Department</label>
-                    <select value={form.department || ""} disabled={!form.branch} onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white disabled:bg-slate-50 disabled:text-slate-400" required>
-                      <option value="">{form.branch ? "Select department" : "Select a branch first"}</option>
-                      {departments.map((d) => (
-                        <option key={d._id} value={d._id}>{d.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" rows={3} />
-              </div>
-            </>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+              <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" rows={3} />
+            </div>
           )}
 
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 px-5 py-2.5 rounded-xl border border-border text-sm text-slate-600 hover:bg-secondary/30">Cancel</button>
+          <div className="flex flex-wrap gap-2.5 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm text-slate-600 hover:bg-secondary/30">Cancel</button>
+            {!editId && (
+              <button
+                type="button"
+                onClick={handleSaveAsDraft}
+                className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 text-sm font-medium hover:bg-amber-100 transition-colors"
+              >
+                <Bookmark size={15} /> Save as Draft
+              </button>
+            )}
             <button type="submit" disabled={saving} className="flex-1 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-medium disabled:opacity-50">
               {saving ? "Saving..." : editId ? "Update" : "Create"}
             </button>
           </div>
         </form>
       </div>
+
+      {/* Quick Branch Creation Modal when user discovers no branch exists */}
+      {showQuickBranchModal && (
+        <EntityCreateModal
+          entity="branch"
+          open={showQuickBranchModal}
+          onClose={() => setShowQuickBranchModal(false)}
+          onCreated={(newBranchId) => {
+            setShowQuickBranchModal(false);
+            void loadBranches(newBranchId);
+          }}
+        />
+      )}
+
+      {/* Quick Department Creation Modal when user discovers no department exists */}
+      {showQuickDeptModal && (
+        <EntityCreateModal
+          entity="department"
+          open={showQuickDeptModal}
+          onClose={() => setShowQuickDeptModal(false)}
+          extraPayload={{ branch: form.branch }}
+          onCreated={(newDeptId) => {
+            setShowQuickDeptModal(false);
+            if (form.branch) void loadDepartments(form.branch, newDeptId);
+          }}
+        />
+      )}
     </div>
   );
 

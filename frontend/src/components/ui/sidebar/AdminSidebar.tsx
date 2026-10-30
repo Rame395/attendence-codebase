@@ -180,18 +180,36 @@ export const AdminSidebar = ({ open, onClose, collapsed, onToggleCollapse }: Sid
             </AllowAccess>
 
             {/* 2. Staff Management */}
-            <AllowAccess role={["super_admin", "hr_admin", "manager"]} permission={["users", "employees", "departments", "designations", "branches"]}>
+            <AllowAccess role={["super_admin", "hr_admin", "manager"]} permission={["branches", "departments", "designations", "employees", "users"]}>
               <div className={`pt-4 pb-1.5 px-3 text-[10px] font-bold text-primary/60 uppercase tracking-widest ${collapsed ? "md:hidden" : ""}`}>
                 Staff Management
               </div>
               {collapsed && <div className="hidden md:block pt-3 pb-1"><div className="mx-auto h-px w-8 bg-border" /></div>}
             </AllowAccess>
 
-            <AllowAccess role={["super_admin", "hr_admin"]} permission="users">
+            <AllowAccess role="super_admin" permission="branches">
               <li>
-                <NavLink to="/admin/users" className={navClass} onClick={handleNavClick} title={collapsed ? "Users" : undefined}>
-                  <Users className="size-4 shrink-0" />
-                  <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Users</span>
+                <NavLink to="/admin/branches" className={navClass} onClick={handleNavClick} title={collapsed ? "Branches" : undefined}>
+                  <MapPin className="size-4 shrink-0" />
+                  <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Branches</span>
+                </NavLink>
+              </li>
+            </AllowAccess>
+
+            <AllowAccess role={["super_admin", "hr_admin"]} permission="departments">
+              <li>
+                <NavLink to="/admin/departments" className={navClass} onClick={handleNavClick} title={collapsed ? "Departments" : undefined}>
+                  <Building2 className="size-4 shrink-0" />
+                  <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Departments</span>
+                </NavLink>
+              </li>
+            </AllowAccess>
+
+            <AllowAccess role={["super_admin", "hr_admin"]} permission="designations">
+              <li>
+                <NavLink to="/admin/designations" className={navClass} onClick={handleNavClick} title={collapsed ? "Designations" : undefined}>
+                  <BriefcaseBusiness className="size-4 shrink-0" />
+                  <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Designations</span>
                 </NavLink>
               </li>
             </AllowAccess>
@@ -204,28 +222,12 @@ export const AdminSidebar = ({ open, onClose, collapsed, onToggleCollapse }: Sid
                 </NavLink>
               </li>
             </AllowAccess>
-            <AllowAccess role={["super_admin", "hr_admin"]} permission="departments">
-              <li>
-                <NavLink to="/admin/departments" className={navClass} onClick={handleNavClick} title={collapsed ? "Departments" : undefined}>
-                  <Building2 className="size-4 shrink-0" />
-                  <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Departments</span>
-                </NavLink>
-              </li>
-            </AllowAccess>
-            <AllowAccess role={["super_admin", "hr_admin"]} permission="designations">
-              <li>
-                <NavLink to="/admin/designations" className={navClass} onClick={handleNavClick} title={collapsed ? "Designations" : undefined}>
-                  <BriefcaseBusiness className="size-4 shrink-0" />
-                  <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Designations</span>
-                </NavLink>
-              </li>
-            </AllowAccess>
 
-            <AllowAccess role="super_admin" permission="branches">
+            <AllowAccess role={["super_admin", "hr_admin"]} permission="users">
               <li>
-                <NavLink to="/admin/branches" className={navClass} onClick={handleNavClick} title={collapsed ? "Branches" : undefined}>
-                  <MapPin className="size-4 shrink-0" />
-                  <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Branches</span>
+                <NavLink to="/admin/users" className={navClass} onClick={handleNavClick} title={collapsed ? "Users" : undefined}>
+                  <Users className="size-4 shrink-0" />
+                  <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Users</span>
                 </NavLink>
               </li>
             </AllowAccess>

@@ -286,9 +286,11 @@ class UserController {
 
       res.status(201).json({
         data: result,
-        message: result.emailSent
-          ? "User created successfully. Login credentials have been sent to email."
-          : "User created successfully, but the welcome email could not be delivered. Please verify the email address.",
+        message: (result as any).linkedExistingAccount
+          ? "Employee profile created and linked to your existing account."
+          : result.emailSent
+            ? "User created successfully. Login credentials have been sent to email."
+            : "User created successfully, but the welcome email could not be delivered. Please verify the email address.",
         meta: null,
       });
 

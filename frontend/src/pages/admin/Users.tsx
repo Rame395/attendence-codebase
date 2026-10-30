@@ -11,6 +11,8 @@ import {
   X,
   Pencil,
   Plus,
+  Bookmark,
+  RotateCcw,
 } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../config/ApiClient";
@@ -855,22 +857,65 @@ function EditUserModal({ user, onClose, onUpdated, isSuperAdmin, lockedBranch }:
   );
 }
 
+const USER_DRAFT_KEY = "attendance_draft_create_user";
+
+function hasUserDraftContent(f: Record<string, string>): boolean {
+  return Boolean(
+    f.employeeId?.trim() ||
+    f.name?.trim() ||
+    f.email?.trim() ||
+    f.phone?.trim() ||
+    f.department?.trim() ||
+    f.designation?.trim() ||
+    f.joiningDate?.trim() ||
+    f.gender?.trim()
+  );
+}
+
 // Add user modal - role anusar fields
 function AddUserModal({ onClose, onCreated, lockedBranch, isSuperAdmin }: { onClose: () => void; onCreated: () => void; lockedBranch?: IOption | null; isSuperAdmin: boolean }) {
   // Users sidebar: employee role bahek - super_admin lai hr_admin+manager, hr_admin lai manager matra
   const roleOptions = isSuperAdmin ? ["manager", "hr_admin"] : ["manager"];
-  const [form, setForm] = useState({
-    employeeId: "",
-    name: "",
-    email: "",
-    phone: "",
-    department: "",
-    designation: "",
-    branch: lockedBranch?._id || "",
-    joiningDate: "",
-    gender: "",
-    manager: "",
-    role: "manager",
+  const [draftRestored, setDraftRestored] = useState<boolean>(() => {
+    try {
+      const raw = localStorage.getItem(USER_DRAFT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, string>;
+        return hasUserDraftContent(parsed);
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  });
+  const [form, setForm] = useState(() => {
+    const base = {
+      employeeId: "",
+      name: "",
+      email: "",
+      phone: "",
+      department: "",
+      designation: "",
+      branch: lockedBranch?._id || "",
+      joiningDate: "",
+      gender: "",
+      manager: "",
+      role: "manager",
+    };
+    try {
+      const raw = localStorage.getItem(USER_DRAFT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<typeof base>;
+        return {
+          ...base,
+          ...parsed,
+          branch: lockedBranch?._id || parsed.branch || "",
+        };
+      }
+    } catch {
+      // ignore
+    }
+    return base;
   });
   // HR/Admin create garepachi branch/dept/designation chainadaina
   const isHrAdmin = form.role === "hr_admin";
@@ -882,13 +927,73 @@ function AddUserModal({ onClose, onCreated, lockedBranch, isSuperAdmin }: { onCl
   const [imageFile, setImageFile] = useState<File | null>(null);
 
   useEffect(() => {
+    try {
+      if (hasUserDraftContent(form)) {
+        localStorage.setItem(USER_DRAFT_KEY, JSON.stringify(form));
+      }
+    } catch {
+      // ignore
+    }
+  }, [form]);
+
+  const handleSaveAsDraft = () => {
+    try {
+      localStorage.setItem(USER_DRAFT_KEY, JSON.stringify(form));
+      toast.success("User details saved as draft!");
+      onClose();
+    } catch {
+      toast.error("Failed to save draft");
+    }
+  };
+
+  const handleClearDraft = () => {
+    try {
+      localStorage.removeItem(USER_DRAFT_KEY);
+    } catch {
+      // ignore
+    }
+    setDraftRestored(false);
+    setForm({
+      employeeId: "",
+      name: "",
+      email: "",
+      phone: "",
+      department: "",
+      designation: "",
+      branch: lockedBranch?._id || (branches.length === 1 ? branches[0]._id : ""),
+      joiningDate: "",
+      gender: "",
+      manager: "",
+      role: "manager",
+    });
+    setImageFile(null);
+    toast.success("Draft cleared");
+  };
+
+  useEffect(() => {
     const fetchData = async () => {
       try {
         const branchRes = await axiosInstance.get("/branches");
-        setBranches(branchRes.data || []);
+        const branchList = (branchRes.data || []) as { _id: string; name: string }[];
+        setBranches(branchList);
+        const initialBranch = lockedBranch?._id || form.branch || (branchList.length === 1 ? branchList[0]._id : "");
+        if (initialBranch) {
+          if (!form.branch) setForm((f) => ({ ...f, branch: initialBranch }));
+          const deptRes = (await axiosInstance.get("/departments", { params: { branch: initialBranch } })) as {
+            data: { _id: string; name: string }[];
+          };
+          setDepartments(deptRes.data || []);
+          if (form.department) {
+            const desigRes = (await axiosInstance.get("/designations", {
+              params: { branch: initialBranch, department: form.department },
+            })) as { data: { _id: string; name: string }[] };
+            setDesignations(desigRes.data || []);
+          }
+        }
       } catch { /* silently fail */ }
     };
-    fetchData();
+    void fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchBranches = async () => {
@@ -985,6 +1090,11 @@ function AddUserModal({ onClose, onCreated, lockedBranch, isSuperAdmin }: { onCl
           toast.error("User created but photo upload failed");
         }
       }
+      try {
+        localStorage.removeItem(USER_DRAFT_KEY);
+      } catch {
+        // ignore
+      }
       toast.success((res as { message?: string })?.message || "User created successfully — login credentials sent via email");
       onCreated();
     } catch (error) {
@@ -998,8 +1108,26 @@ function AddUserModal({ onClose, onCreated, lockedBranch, isSuperAdmin }: { onCl
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between p-6 border-b border-border/50">
-          <h3 className="font-bold text-lg text-gray-900">Add User</h3>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-secondary/30 text-gray-400"><X size={20} /></button>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <h3 className="font-bold text-lg text-gray-900">Add User</h3>
+            {draftRestored && (
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-medium text-amber-700">
+                <Bookmark size={11} /> Draft Restored
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            {hasUserDraftContent(form) && (
+              <button
+                type="button"
+                onClick={handleClearDraft}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+              >
+                <RotateCcw size={13} /> Clear
+              </button>
+            )}
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-secondary/30 text-gray-400"><X size={20} /></button>
+          </div>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Photo upload + instant preview */}
@@ -1094,8 +1222,15 @@ function AddUserModal({ onClose, onCreated, lockedBranch, isSuperAdmin }: { onCl
               />
             </div>
           )}
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 px-5 py-2.5 rounded-xl border border-border text-sm text-gray-600 hover:bg-secondary/30">Cancel</button>
+          <div className="flex flex-wrap gap-2.5 pt-2">
+            <button type="button" onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl border border-border text-sm text-gray-600 hover:bg-secondary/30">Cancel</button>
+            <button
+              type="button"
+              onClick={handleSaveAsDraft}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-800 text-sm font-medium hover:bg-amber-100 transition-colors"
+            >
+              <Bookmark size={15} /> Save as Draft
+            </button>
             <button type="submit" disabled={loading} className="flex-1 px-5 py-2.5 rounded-xl bg-primary text-white text-sm font-medium disabled:opacity-50">
               {loading ? "Creating..." : "Create User"}
             </button>

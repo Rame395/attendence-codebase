@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
-import { Search, Loader } from "lucide-react";
+import { Search, Loader, MapPin, X } from "lucide-react";
 import L from "leaflet";
 import { toast } from "sonner";
 
@@ -31,6 +31,23 @@ interface ISearchResult {
   lat: string;
   lon: string;
   display_name: string;
+  title?: string;
+  subtitle?: string;
+}
+
+interface IPhotonFeature {
+  geometry?: { coordinates?: [number, number] };
+  properties?: {
+    name?: string;
+    street?: string;
+    locality?: string;
+    district?: string;
+    city?: string;
+    county?: string;
+    state?: string;
+    country?: string;
+    countrycode?: string;
+  };
 }
 
 interface IGeofenceMapProps {
@@ -97,22 +114,118 @@ export default function GeofenceMap({
     return [27.7172, 85.324]; // Kathmandu default
   }, [latitude, longitude, hasValidLocation]);
 
-  // Nepal ma fix gareko search: viewbox(Nepal bounds) + bounded + countrycodes=np
+  // Nepal ma fix gareko search: viewbox(Nepal bounds) + countrycodes=np + Photon fuzzy search
   const NEPAL_VIEWBOX = "80.0586,26.3473,88.2019,30.4490";
 
-  // Nominatim (OpenStreetMap) bata Nepal ma matra location search garne
+  const formatResultParts = (displayName: string): { title: string; subtitle: string } => {
+    const parts = displayName
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const title = parts[0] || displayName;
+    const subtitle = parts.slice(1).join(", ");
+    return { title, subtitle };
+  };
+
+  // Multi-source location search (Photon fuzzy/autocomplete + OpenStreetMap Nominatim + Nepal fallback)
   const searchLocation = async (q: string) => {
-    if (!q.trim()) return;
+    const trimmed = q.trim();
+    if (!trimmed) return;
     const seq = ++searchSeqRef.current;
     setSearching(true);
     try {
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&limit=6&countrycodes=np&bounded=1&viewbox=${NEPAL_VIEWBOX}&q=${encodeURIComponent(q.trim())}`,
+      const biasLat = center[0] || 27.7172;
+      const biasLon = center[1] || 85.324;
+
+      // 1. Photon API (fuzzy/partial/local landmark & chowk search biased to current center & bounded to Nepal)
+      const photonPromise = fetch(
+        `https://photon.komoot.io/api/?q=${encodeURIComponent(trimmed)}&lat=${biasLat}&lon=${biasLon}&bbox=${NEPAL_VIEWBOX}&limit=10`,
         { headers: { Accept: "application/json" } },
-      );
-      const data = (await res.json()) as ISearchResult[];
-      if (seq !== searchSeqRef.current) return; // purano response - ignore garne
-      setResults(data);
+      )
+        .then((r) => r.json() as Promise<{ features?: IPhotonFeature[] }>)
+        .then((json) => {
+          const items: ISearchResult[] = [];
+          for (const f of json.features || []) {
+            const coords = f.geometry?.coordinates;
+            const p = f.properties;
+            if (!coords || coords.length < 2 || !p) continue;
+            if (p.countrycode && p.countrycode.toUpperCase() !== "NP") continue;
+            const parts = [p.name, p.street, p.locality, p.district, p.city, p.county, p.state, p.country || "Nepal"]
+              .map((x) => (x || "").trim())
+              .filter(Boolean);
+            // deduplicate consecutive identical parts
+            const uniqueParts = parts.filter((val, idx, arr) => arr.findIndex((t) => t.toLowerCase() === val.toLowerCase()) === idx);
+            if (uniqueParts.length === 0) continue;
+            const display_name = uniqueParts.join(", ");
+            const { title, subtitle } = formatResultParts(display_name);
+            items.push({
+              lat: String(coords[1]),
+              lon: String(coords[0]),
+              display_name,
+              title,
+              subtitle,
+            });
+          }
+          return items;
+        })
+        .catch(() => [] as ISearchResult[]);
+
+      // 2. Nominatim primary search across Nepal (without strict bounded=1 rejection when viewbox is used)
+      const nominatimPromise = fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=10&countrycodes=np&viewbox=${NEPAL_VIEWBOX}&q=${encodeURIComponent(trimmed)}`,
+        { headers: { Accept: "application/json" } },
+      )
+        .then((r) => r.json() as Promise<ISearchResult[]>)
+        .then((list) =>
+          (Array.isArray(list) ? list : []).map((item) => {
+            const { title, subtitle } = formatResultParts(item.display_name);
+            return { ...item, title, subtitle };
+          }),
+        )
+        .catch(() => [] as ISearchResult[]);
+
+      const [photonResults, nominatimResults] = await Promise.all([photonPromise, nominatimPromise]);
+      if (seq !== searchSeqRef.current) return;
+
+      let combined = [...nominatimResults, ...photonResults];
+
+      // 3. Fallback: if user typed a multi-word or informal local query and got 0 results, retry with ", Nepal" or simplified tokens
+      if (combined.length === 0) {
+        const fallbackQuery = trimmed.toLowerCase().includes("nepal") ? trimmed.split(/[\s,]+/)[0] : `${trimmed}, Nepal`;
+        if (fallbackQuery) {
+          const fallbackRes = await fetch(
+            `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=8&countrycodes=np&q=${encodeURIComponent(fallbackQuery)}`,
+            { headers: { Accept: "application/json" } },
+          )
+            .then((r) => r.json() as Promise<ISearchResult[]>)
+            .catch(() => [] as ISearchResult[]);
+          if (seq !== searchSeqRef.current) return;
+          combined = (Array.isArray(fallbackRes) ? fallbackRes : []).map((item) => {
+            const { title, subtitle } = formatResultParts(item.display_name);
+            return { ...item, title, subtitle };
+          });
+        }
+      }
+
+      // Deduplicate nearby results with same title
+      const deduped: ISearchResult[] = [];
+      for (const item of combined) {
+        const latNum = Number(item.lat);
+        const lonNum = Number(item.lon);
+        if (Number.isNaN(latNum) || Number.isNaN(lonNum)) continue;
+        const isDuplicate = deduped.some((existing) => {
+          const dLat = Math.abs(Number(existing.lat) - latNum);
+          const dLon = Math.abs(Number(existing.lon) - lonNum);
+          const sameCoords = dLat < 0.0008 && dLon < 0.0008;
+          const sameTitle = (existing.title || "").toLowerCase() === (item.title || "").toLowerCase();
+          return sameCoords && sameTitle;
+        });
+        if (!isDuplicate) {
+          deduped.push(item);
+        }
+      }
+
+      setResults(deduped.slice(0, 12));
       setShowResults(true);
     } catch {
       if (seq === searchSeqRef.current) {
@@ -160,11 +273,14 @@ export default function GeofenceMap({
                     setShowResults(false);
                     return;
                   }
-                  // typing pachhi 1.2 sec ma afai search (button thichna pardaina)
+                  // typing pachhi 450ms ma afai smart search
                   debounceRef.current = window.setTimeout(() => {
                     debounceRef.current = null;
                     void searchLocation(v);
-                  }, 1200);
+                  }, 450);
+                }}
+                onFocus={() => {
+                  if (results.length > 0) setShowResults(true);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -176,9 +292,23 @@ export default function GeofenceMap({
                     if (!searching) void searchLocation(query);
                   }
                 }}
-                placeholder="Search location (e.g. New Baneshwor, Kathmandu)"
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-border text-sm outline-none focus:border-primary bg-white"
+                placeholder="Search any area, chowk, landmark, or city (e.g. Baneshwor, Putalisadak, Pokhara)"
+                className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-border text-sm outline-none focus:border-primary bg-white"
               />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery("");
+                    setResults([]);
+                    setShowResults(false);
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                  title="Clear search"
+                >
+                  <X size={13} />
+                </button>
+              )}
             </div>
             <button
               type="button"
@@ -199,23 +329,27 @@ export default function GeofenceMap({
 
           {/* search results dropdown */}
           {showResults && results.length > 0 && (
-            <div className="absolute mt-1 w-full bg-white rounded-xl border border-border shadow-xl overflow-hidden max-h-56 overflow-y-auto">
+            <div className="absolute mt-1 w-full bg-white rounded-xl border border-border shadow-xl overflow-hidden max-h-64 overflow-y-auto">
               {results.map((r, i) => (
                 <button
                   type="button"
                   key={i}
                   onClick={() => handleSelect(r)}
-                  className="w-full text-left px-3 py-2.5 text-xs text-slate-700 hover:bg-secondary/40 border-b border-slate-50 last:border-0 transition-colors"
+                  className="w-full text-left px-3.5 py-2.5 hover:bg-secondary/40 border-b border-slate-100 last:border-0 transition-colors flex items-start gap-2.5"
                 >
-                  {r.display_name}
+                  <MapPin size={14} className="text-primary shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-slate-800 truncate">{r.title || r.display_name}</p>
+                    {r.subtitle && <p className="text-[11px] text-slate-500 truncate mt-0.5">{r.subtitle}</p>}
+                  </div>
                 </button>
               ))}
             </div>
           )}
 
           {showResults && results.length === 0 && !searching && (
-            <div className="absolute mt-1 w-full bg-white rounded-xl border border-border shadow-xl px-3 py-2.5 text-xs text-slate-500">
-              No location found
+            <div className="absolute mt-1 w-full bg-white rounded-xl border border-border shadow-xl px-3.5 py-3 text-xs text-slate-500">
+              No exact match found. Try searching a nearby main area or click directly on the map below to place the pin.
             </div>
           )}
         </div>
