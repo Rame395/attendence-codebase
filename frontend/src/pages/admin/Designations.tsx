@@ -12,6 +12,7 @@ interface IDesignation {
   _id: string;
   name: string;
   code?: string;
+  description?: string;
   branch?: {
     _id: string;
     name: string;
@@ -173,9 +174,12 @@ export default function Designations() {
                     {d.branch?.name && <p className="text-[11px] text-slate-400">{d.branch.name}</p>}
                   </div>
                 </div>
+                {d.description && (
+                  <p className="text-xs text-slate-500 mb-3 line-clamp-2">{d.description}</p>
+                )}
                 <div className="flex gap-2">
-                  <button onClick={() => openEdit(d)} className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors"><Edit3 size={14} /></button>
-                  <button onClick={() => setDeleteTarget(d)} className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
+                  <button type="button" onClick={() => openEdit(d)} aria-label={`Edit ${d.name}`} title="Edit" className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors"><Edit3 size={14} /></button>
+                  <button type="button" onClick={() => setDeleteTarget(d)} aria-label={`Delete ${d.name}`} title="Delete" className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
                 </div>
               </div>
             ))}
@@ -235,7 +239,7 @@ export default function Designations() {
         open={showModal}
         onClose={() => setShowModal(false)}
         onCreated={fetchData}
-        initial={editItem ? { name: editItem.name, code: editItem.code || "", branch: editItem.branch?._id || "", department: editItem.department?._id || "" } satisfies EntityCreateData : null}
+        initial={editItem ? { name: editItem.name, code: editItem.code || "", description: editItem.description || "", branch: editItem.branch?._id || "", department: editItem.department?._id || "" } satisfies EntityCreateData : null}
         editId={editItem?._id}
       />
 

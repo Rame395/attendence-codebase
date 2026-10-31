@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import DesignationService from "../services/DesignationService.js";
+import AuditLogService from "../services/AuditLogService.js";
 
 class DesignationController {
     getAll = async (req: Request, res: Response, next: NextFunction) => {
@@ -52,6 +53,20 @@ class DesignationController {
                 createdBy: req.loggedInUser?._id ?? null,
             });
 
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Designation Created",
+                "designation",
+                {
+                    targetId: (data as any)?._id?.toString(),
+                    newData: {
+                        name: (data as any)?.name,
+                        description: (data as any)?.description,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
+
             res.status(201).json({
                 data,
                 message: "Designation created successfully",
@@ -83,6 +98,21 @@ class DesignationController {
                 };
             }
 
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Designation Updated",
+                "designation",
+                {
+                    targetId: id,
+                    newData: {
+                        name: (data as any)?.name,
+                        description: (data as any)?.description,
+                        status: (data as any)?.status,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
+
             res.json({
                 data,
                 message: "Designation updated successfully",
@@ -110,6 +140,20 @@ class DesignationController {
                     message: "Designation not found",
                 };
             }
+
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Designation Deleted",
+                "designation",
+                {
+                    targetId: id,
+                    oldData: {
+                        name: (data as any)?.name,
+                        description: (data as any)?.description,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
 
             res.json({
                 data: null,

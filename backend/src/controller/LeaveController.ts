@@ -17,6 +17,23 @@ class LeaveController {
 
             const leaveRequest = await LeaveService.createLeaveRequest(req.body, user.employee.toString());
 
+            await AuditLogService.logAction(
+                userId?.toString(),
+                "Leave Requested",
+                "leave",
+                {
+                    targetId: (leaveRequest as any)?._id?.toString(),
+                    employee: user.employee.toString(),
+                    newData: {
+                        leaveType: (leaveRequest as any)?.leaveType,
+                        startDate: (leaveRequest as any)?.startDate,
+                        endDate: (leaveRequest as any)?.endDate,
+                        totalDays: (leaveRequest as any)?.totalDays,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
+
             res.status(201).json({
                 data: leaveRequest,
                 message: "Leave request created successfully",
@@ -93,7 +110,7 @@ class LeaveController {
             const request = await LeaveService.approveLeaveRequest(id, status, userId);
 
             // audit log
-            AuditLogService.logAction(
+            await AuditLogService.logAction(
                 userId.toString(),
                 status === "approved" ? "Leave Approved" : "Leave Rejected",
                 "leave",
@@ -185,7 +202,27 @@ class LeaveController {
                 throw { code: 400, message: "Invalid leave request ID" };
             }
 
+            const existing: any = await LeaveService.getLeaveRequestById(id);
             await LeaveService.deleteLeaveRequest(id);
+
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Leave Deleted",
+                "leave",
+                {
+                    targetId: id,
+                    employee: (existing?.employee as any)?._id?.toString?.() ?? existing?.employee?.toString?.(),
+                    oldData: existing
+                        ? {
+                              leaveType: existing.leaveType,
+                              startDate: existing.startDate,
+                              endDate: existing.endDate,
+                              status: existing.status,
+                          }
+                        : null,
+                    ipAddress: req.ip,
+                },
+            );
 
             res.json({
                 data: null,

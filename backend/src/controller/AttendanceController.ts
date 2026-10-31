@@ -159,7 +159,7 @@ class AttendanceController {
             const record = await AttendanceService.markAttendance(req.body);
 
             // audit log
-            AuditLogService.logAction(
+            await AuditLogService.logAction(
                 req.loggedInUser?._id?.toString(),
                 "Attendance Created",
                 "attendance",
@@ -205,7 +205,7 @@ class AttendanceController {
             const record = await AttendanceService.updateAttendance(id, req.body);
 
             // audit log
-            AuditLogService.logAction(
+            await AuditLogService.logAction(
                 req.loggedInUser?._id?.toString(),
                 "Attendance Modified",
                 "attendance",

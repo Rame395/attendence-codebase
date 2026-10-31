@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { CalendarCheck, Clock, MapPin, User, Plus, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../config/ApiClient";
-import { formatDate, formatTime as fmtTime, toLocalDateInput } from "../../lib/nepali-date";
+import { formatDate, formatTime as fmtTime, parseLocalDate, toLocalDateInput } from "../../lib/nepali-date";
 import { useCalendarPreference } from "../../lib/hooks/useCalendarPreference";
+import { useModalAccessibility } from "../../lib/hooks/useModalAccessibility";
 import { useAppSelector } from "../../lib/hooks/redux";
 import BSCalendarInput from "../../components/ui/BSCalendarInput";
 import Pagination from "../../components/common/Pagination";
@@ -85,6 +86,7 @@ export default function Attendance() {
   // mark/edit modal
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const modalRef = useModalAccessibility(() => setShowModal(false), showModal);
   const [form, setForm] = useState<IMarkForm>({
     attendanceId: null,
     employee: "",
@@ -297,7 +299,7 @@ export default function Attendance() {
     setForm({
       attendanceId: rec._id,
       employee: rec.employee?._id ?? "",
-      date: toLocalDateInput(new Date(rec.date)),
+      date: toLocalDateInput(parseLocalDate(rec.date)),
       checkInTime: toLocalHHmm(rec.checkIn?.time),
       checkOutTime: toLocalHHmm(rec.checkOut?.time),
       status: rec.status || "",
@@ -308,6 +310,11 @@ export default function Attendance() {
   // save (create ya update)
   const handleSave = async () => {
     try {
+      if (form.checkInTime && form.checkOutTime && form.checkOutTime <= form.checkInTime) {
+        toast.error("Check-out time must be after check-in time");
+        return;
+      }
+
       if (form.attendanceId) {
         // edit: status + times optional, anchor on existing record
         setSaving(true);
@@ -339,16 +346,13 @@ export default function Attendance() {
           toast.error("Please select a date");
           return;
         }
-        if (!form.checkInTime) {
-          toast.error("Please enter check-in time");
-          return;
-        }
-        if (!form.checkOutTime) {
-          toast.error("Please enter check-out time");
-          return;
-        }
         if (!form.status) {
           toast.error("Please select a status");
+          return;
+        }
+        const isNonWorking = ["absent", "leave", "holiday"].includes(form.status);
+        if (!isNonWorking && !form.checkInTime) {
+          toast.error("Please enter check-in time");
           return;
         }
 
@@ -411,7 +415,7 @@ export default function Attendance() {
         </div>
         <div className="flex items-center gap-3">
           <BSCalendarInput
-            value={new Date(dateFilter)}
+            value={parseLocalDate(dateFilter)}
             onChange={(d) => { if (d) setDateFilter(toLocalDateInput(d)); }}
             label=""
           />
@@ -430,8 +434,9 @@ export default function Attendance() {
       {/* Filters row - cascading: Branch → Department → Designation → Employee */}
       <div className="bg-white rounded-2xl border border-border p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <div>
-          <span className="block text-[11px] font-medium text-slate-500 mb-1">Branch</span>
+          <label htmlFor="att-filter-branch" className="block text-[11px] font-medium text-slate-500 mb-1">Branch</label>
           <select
+            id="att-filter-branch"
             value={branchFilter}
             onChange={(e) => handleBranchChange(e.target.value)}
             className="w-full rounded-xl border border-border px-3 py-2.5 text-sm bg-white outline-none focus:border-primary"
@@ -443,8 +448,9 @@ export default function Attendance() {
           </select>
         </div>
         <div>
-          <span className="block text-[11px] font-medium text-slate-500 mb-1">Department</span>
+          <label htmlFor="att-filter-department" className="block text-[11px] font-medium text-slate-500 mb-1">Department</label>
           <select
+            id="att-filter-department"
             value={departmentFilter}
             onChange={(e) => handleDepartmentChange(e.target.value)}
             disabled={!branchFilter}
@@ -457,8 +463,9 @@ export default function Attendance() {
           </select>
         </div>
         <div>
-          <span className="block text-[11px] font-medium text-slate-500 mb-1">Designation</span>
+          <label htmlFor="att-filter-designation" className="block text-[11px] font-medium text-slate-500 mb-1">Designation</label>
           <select
+            id="att-filter-designation"
             value={designationFilter}
             onChange={(e) => handleDesignationChange(e.target.value)}
             disabled={!branchFilter}
@@ -471,8 +478,9 @@ export default function Attendance() {
           </select>
         </div>
         <div>
-          <span className="block text-[11px] font-medium text-slate-500 mb-1">Employee</span>
+          <label htmlFor="att-filter-employee" className="block text-[11px] font-medium text-slate-500 mb-1">Employee</label>
           <select
+            id="att-filter-employee"
             value={employeeFilter}
             onChange={(e) => handleEmployeeChange(e.target.value)}
             disabled={!branchFilter}
@@ -485,8 +493,9 @@ export default function Attendance() {
           </select>
         </div>
         <div>
-          <span className="block text-[11px] font-medium text-slate-500 mb-1">Status</span>
+          <label htmlFor="att-filter-status" className="block text-[11px] font-medium text-slate-500 mb-1">Status</label>
           <select
+            id="att-filter-status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="w-full rounded-xl border border-border px-3 py-2.5 text-sm capitalize bg-white outline-none focus:border-primary"
@@ -570,7 +579,7 @@ export default function Attendance() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-slate-700">{formatDate(new Date(rec.date), calPref)}</td>
+                    <td className="px-6 py-4 text-sm text-slate-700">{formatDate(parseLocalDate(rec.date), calPref)}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2 text-sm text-slate-700">
                         <Clock size={14} className="text-primary" />
@@ -602,6 +611,7 @@ export default function Attendance() {
                       {canManageAttendance ? (
                         <button
                           onClick={() => openEditModal(rec)}
+                          aria-label={`Edit attendance for ${rec.employee?.name || "employee"}`}
                           className="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-secondary transition-colors"
                           title="Edit attendance"
                         >
@@ -626,8 +636,14 @@ export default function Attendance() {
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setShowModal(false)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <h2 className="text-lg font-bold text-slate-900">
+          <div
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="attendance-modal-title"
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4 max-h-[90vh] overflow-y-auto"
+          >
+            <h2 id="attendance-modal-title" className="text-lg font-bold text-slate-900">
               {form.attendanceId ? "Edit Attendance" : "Mark Attendance"}
             </h2>
 
@@ -635,8 +651,9 @@ export default function Attendance() {
               <div className="space-y-3">
                 <p className="text-xs font-medium text-slate-500">Select employee</p>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Branch *</label>
+                  <label htmlFor="att-modal-branch" className="block text-sm font-medium text-slate-700 mb-1">Branch *</label>
                   <select
+                    id="att-modal-branch"
                     value={modalBranch}
                     onChange={(e) => handleModalBranchChange(e.target.value)}
                     className="w-full rounded-xl border border-border px-3 py-2.5 text-sm bg-white outline-none focus:border-primary"
@@ -648,8 +665,9 @@ export default function Attendance() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Department *</label>
+                  <label htmlFor="att-modal-department" className="block text-sm font-medium text-slate-700 mb-1">Department *</label>
                   <select
+                    id="att-modal-department"
                     value={modalDepartment}
                     onChange={(e) => handleModalDepartmentChange(e.target.value)}
                     disabled={!modalBranch}
@@ -662,8 +680,9 @@ export default function Attendance() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Designation *</label>
+                  <label htmlFor="att-modal-designation" className="block text-sm font-medium text-slate-700 mb-1">Designation *</label>
                   <select
+                    id="att-modal-designation"
                     value={modalDesignation}
                     onChange={(e) => handleModalDesignationChange(e.target.value)}
                     disabled={!modalBranch}
@@ -676,8 +695,9 @@ export default function Attendance() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Employee *</label>
+                  <label htmlFor="att-modal-employee" className="block text-sm font-medium text-slate-700 mb-1">Employee *</label>
                   <select
+                    id="att-modal-employee"
                     value={form.employee}
                     onChange={(e) => setForm({ ...form, employee: e.target.value })}
                     disabled={!modalBranch}
@@ -694,9 +714,9 @@ export default function Attendance() {
 
             {!form.attendanceId && (
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Date *</label>
                 <BSCalendarInput
-                  value={new Date(form.date)}
+                  label="Date *"
+                  value={parseLocalDate(form.date)}
                   onChange={(d) => { if (d) setForm({ ...form, date: toLocalDateInput(d) }); }}
                   placeholder="Select date"
                 />
@@ -704,8 +724,9 @@ export default function Attendance() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Check In Time</label>
+              <label htmlFor="att-modal-checkin" className="block text-sm font-medium text-slate-700 mb-1">Check In Time</label>
               <input
+                id="att-modal-checkin"
                 type="time"
                 value={form.checkInTime}
                 onChange={(e) => setForm({ ...form, checkInTime: e.target.value })}
@@ -714,18 +735,21 @@ export default function Attendance() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Check Out Time</label>
+              <label htmlFor="att-modal-checkout" className="block text-sm font-medium text-slate-700 mb-1">Check Out Time</label>
               <input
+                id="att-modal-checkout"
                 type="time"
                 value={form.checkOutTime}
+                min={form.checkInTime || undefined}
                 onChange={(e) => setForm({ ...form, checkOutTime: e.target.value })}
                 className="w-full rounded-xl border border-border px-3 py-2.5 text-sm outline-none focus:border-primary"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+              <label htmlFor="att-modal-status" className="block text-sm font-medium text-slate-700 mb-1">Status</label>
               <select
+                id="att-modal-status"
                 value={form.status}
                 onChange={(e) => setForm({ ...form, status: e.target.value })}
                 className="w-full rounded-xl border border-border px-3 py-2.5 text-sm capitalize bg-white outline-none focus:border-primary"

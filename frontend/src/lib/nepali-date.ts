@@ -63,6 +63,17 @@ export function toLocalDateInput(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+// "YYYY-MM-DD" or ISO string -> local Date (avoids UTC midnight shift on YYYY-MM-DD)
+export function parseLocalDate(dateStr: string | Date): Date {
+  if (dateStr instanceof Date) return dateStr;
+  const trimmed = String(dateStr || "").trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (m) {
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
+  return new Date(trimmed);
+}
+
 // date ma n days add/subtract garne (month rollover safe, time 00:00 ma)
 export function addDays(date: Date, days: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);

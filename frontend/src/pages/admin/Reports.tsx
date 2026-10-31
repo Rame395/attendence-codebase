@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import axiosInstance from "../../config/ApiClient";
-import { toLocalDateInput } from "../../lib/nepali-date";
+import { toLocalDateInput, parseLocalDate } from "../../lib/nepali-date";
 import BSCalendarRange from "../../components/ui/BSCalendarRange";
 
 type ReportType = "attendance" | "employee" | "leave";
@@ -92,8 +92,16 @@ export default function Reports() {
   const buildParams = (): Record<string, string> => {
     const params: Record<string, string> = {};
     if (activeReport !== "employee") {
-      if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
+      if (startDate && endDate) {
+        params.startDate = startDate;
+        params.endDate = endDate;
+      } else if (startDate) {
+        params.startDate = startDate;
+        params.endDate = startDate;
+      } else if (endDate) {
+        params.startDate = endDate;
+        params.endDate = endDate;
+      }
     }
     if (branchId) params.branchId = branchId;
     if (departmentId) params.departmentId = departmentId;
@@ -104,13 +112,15 @@ export default function Reports() {
 
   const getReportConfig = (type: ReportType) => {
     const today = toLocalDateInput(new Date());
+    const dateSuffix =
+      startDate && endDate && startDate !== endDate
+        ? `${startDate}_to_${endDate}`
+        : startDate || endDate || today;
     if (type === "attendance") {
-      const name = startDate && endDate ? `${startDate}_to_${endDate}` : today;
-      return { endpoint: "/reports/attendance", filename: `attendance_${name}` };
+      return { endpoint: "/reports/attendance", filename: `attendance_${dateSuffix}` };
     }
     if (type === "employee") return { endpoint: "/reports/employees", filename: `employees_${today}` };
-    const name = startDate && endDate ? `${startDate}_to_${endDate}` : today;
-    return { endpoint: "/reports/leaves", filename: `leaves_${name}` };
+    return { endpoint: "/reports/leaves", filename: `leaves_${dateSuffix}` };
   };
 
   const handleDownloadPDF = async () => {
@@ -140,7 +150,9 @@ export default function Reports() {
       const title = titleMap[activeReport];
       const filename = `${config.filename}.pdf`;
       const dateRange = activeReport !== "employee"
-        ? startDate || endDate ? `${startDate || "All"} to ${endDate || "All"}` : "All"
+        ? startDate && endDate && startDate !== endDate
+          ? `${startDate} to ${endDate}`
+          : startDate || endDate || "All"
         : "All";
 
       // selected filter haru ko name - PDF header ma dekhauna
@@ -262,10 +274,10 @@ export default function Reports() {
         {showDateRange && (
           <div className="mb-4">
             <BSCalendarRange
-              startDate={startDate ? new Date(startDate) : null}
-              endDate={endDate ? new Date(endDate) : null}
+              startDate={startDate ? parseLocalDate(startDate) : null}
+              endDate={endDate ? parseLocalDate(endDate) : null}
               startLabel="Start / Single Date"
-              allowSameDay={false}
+              allowSameDay={true}
               onChange={(start, end) => {
                 setStartDate(start ? toLocalDateInput(start) : "");
                 setEndDate(end ? toLocalDateInput(end) : "");
@@ -277,8 +289,9 @@ export default function Reports() {
         {/* Cascading: Branch → Department → Designation */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Branch</label>
+            <label htmlFor="report-branch-select" className="block text-sm font-medium text-slate-700 mb-1">Branch</label>
             <select
+              id="report-branch-select"
               value={branchId}
               onChange={(e) => handleBranchChange(e.target.value)}
               className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white"
@@ -290,8 +303,9 @@ export default function Reports() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Department</label>
+            <label htmlFor="report-dept-select" className="block text-sm font-medium text-slate-700 mb-1">Department</label>
             <select
+              id="report-dept-select"
               value={departmentId}
               onChange={(e) => handleDepartmentChange(e.target.value)}
               className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white"
@@ -303,8 +317,9 @@ export default function Reports() {
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Designation</label>
+            <label htmlFor="report-desig-select" className="block text-sm font-medium text-slate-700 mb-1">Designation</label>
             <select
+              id="report-desig-select"
               value={designationId}
               onChange={(e) => setDesignationId(e.target.value)}
               className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white"
@@ -317,8 +332,9 @@ export default function Reports() {
           </div>
           {showStatus && (
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+              <label htmlFor="report-status-select" className="block text-sm font-medium text-slate-700 mb-1">Status</label>
               <select
+                id="report-status-select"
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white"

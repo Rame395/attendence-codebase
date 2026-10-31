@@ -10,12 +10,14 @@ import {
   toBS,
   toNepaliDigits,
   toLocalDateInput,
+  parseLocalDate,
   formatDateShort,
   formatDateDual,
   formatTime,
   formatWorkingMinutes,
 } from "../../lib/nepali-date";
 import { useCalendarPreference, setCalendarPreference } from "../../lib/hooks/useCalendarPreference";
+import { useModalAccessibility } from "../../lib/hooks/useModalAccessibility";
 import { useAppSelector } from "../../lib/hooks/redux";
 import { fetchHolidayViewer, isHolidayApplicable, type IHolidayLike, type IHolidayViewer } from "../../lib/holidayScope";
 
@@ -142,23 +144,22 @@ export default function MyCalendar() {
     const d = new Date(companyCreatedAt);
     return Number.isNaN(d.getTime()) ? null : d;
   }, [companyCreatedAt]);
-  const createdBS = useMemo(() => (createdDate ? getBSDateParts(createdDate) : null), [createdDate]);
 
-  // lower bound = company created; future dates purai selectable
+  // Allow navigating up to 5 years into the past and 10 years into the future
   const minBs = useMemo(
-    () => (createdBS ? { year: createdBS.year, month: createdBS.month } : { year: todayBS.year - 5, month: 0 }),
-    [createdBS, todayBS.year],
+    () => ({ year: todayBS.year - 5, month: 0 }),
+    [todayBS.year],
   );
   const minAd = useMemo(
-    () => (createdDate ? { year: createdDate.getFullYear(), month: createdDate.getMonth() } : { year: new Date().getFullYear() - 5, month: 0 }),
-    [createdDate],
+    () => ({ year: new Date().getFullYear() - 5, month: 0 }),
+    [],
   );
 
   const maxFutureBsYear = todayBS.year + 10;
   const maxFutureAdYear = new Date().getFullYear() + 10;
 
-  // duita navigation state - Nepali (BS) ra English (AD). Switch garda
-  // active date high-level conversion huncha.
+  // Active anchor date preserves the exact date when switching between BS and AD
+  const [anchorDate, setAnchorDate] = useState<Date>(() => new Date());
   const [bsYear, setBsYear] = useState(todayBS.year);
   const [bsMonth, setBsMonth] = useState(todayBS.month);
   const [adYear, setAdYear] = useState(new Date().getFullYear());
@@ -167,6 +168,7 @@ export default function MyCalendar() {
   const [days, setDays] = useState<IDayData[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<IDayData | null>(null);
+  const detailModalRef = useModalAccessibility<HTMLDivElement>(() => setSelected(null), !!selected);
   const [events, setEvents] = useState<ICalEvent[]>([]);
   const [holidays, setHolidays] = useState<IHoliday[]>([]);
   // viewer scope (gender/branch/department) - nalagne holiday lukauna
@@ -319,57 +321,59 @@ export default function MyCalendar() {
     return arr;
   }, [adYear, minAd]);
 
-  // clamp to lower bound only (future open)
-  useEffect(() => {
-    if (bsYear < minBs.year) {
-      setBsYear(minBs.year);
-      setBsMonth(minBs.month);
-    } else if (bsYear === minBs.year && bsMonth < minBs.month) {
-      setBsMonth(minBs.month);
-    }
-  }, [minBs, bsYear, bsMonth]);
+  const atMinBs = bsYear < minBs.year || (bsYear === minBs.year && bsMonth <= minBs.month);
+  const atMinAd = adYear < minAd.year || (adYear === minAd.year && adMonth <= minAd.month);
+  const atMaxBs = bsYear > maxFutureBsYear || (bsYear === maxFutureBsYear && bsMonth >= 11);
+  const atMaxAd = adYear > maxFutureAdYear || (adYear === maxFutureAdYear && adMonth >= 11);
 
-  useEffect(() => {
-    if (adYear < minAd.year) {
-      setAdYear(minAd.year);
-      setAdMonth(minAd.month);
-    } else if (adYear === minAd.year && adMonth < minAd.month) {
-      setAdMonth(minAd.month);
-    }
-  }, [minAd, adYear, adMonth]);
+  const updateBsPeriod = (nextYear: number, nextMonth: number) => {
+    setBsYear(nextYear);
+    setBsMonth(nextMonth);
+    const curBsDay = getBSDateParts(anchorDate).date;
+    const maxDay = getBSDaysInMonth(nextYear, nextMonth);
+    setAnchorDate(bsToDate(nextYear, nextMonth, Math.min(curBsDay, maxDay)));
+  };
 
-  const atMinBs = bsYear === minBs.year && bsMonth <= minBs.month;
-  const atMinAd = adYear === minAd.year && adMonth <= minAd.month;
+  const updateAdPeriod = (nextYear: number, nextMonth: number) => {
+    setAdYear(nextYear);
+    setAdMonth(nextMonth);
+    const curAdDay = anchorDate.getDate();
+    const maxDay = new Date(nextYear, nextMonth + 1, 0).getDate();
+    setAnchorDate(new Date(nextYear, nextMonth, Math.min(curAdDay, maxDay)));
+  };
 
   const prevMonth = () => {
     if (calPref === "bs") {
       if (atMinBs) return;
-      if (bsMonth === 0) { setBsYear(bsYear - 1); setBsMonth(11); } else setBsMonth(bsMonth - 1);
+      if (bsMonth === 0) updateBsPeriod(bsYear - 1, 11);
+      else updateBsPeriod(bsYear, bsMonth - 1);
     } else {
       if (atMinAd) return;
-      if (adMonth === 0) { setAdYear(adYear - 1); setAdMonth(11); } else setAdMonth(adMonth - 1);
+      if (adMonth === 0) updateAdPeriod(adYear - 1, 11);
+      else updateAdPeriod(adYear, adMonth - 1);
     }
   };
 
   const nextMonth = () => {
     if (calPref === "bs") {
-      if (bsMonth === 11) { setBsYear(bsYear + 1); setBsMonth(0); } else setBsMonth(bsMonth + 1);
+      if (atMaxBs) return;
+      if (bsMonth === 11) updateBsPeriod(bsYear + 1, 0);
+      else updateBsPeriod(bsYear, bsMonth + 1);
     } else {
-      if (adMonth === 11) { setAdYear(adYear + 1); setAdMonth(0); } else setAdMonth(adMonth + 1);
+      if (atMaxAd) return;
+      if (adMonth === 11) updateAdPeriod(adYear + 1, 0);
+      else updateAdPeriod(adYear, adMonth + 1);
     }
   };
 
-  // Nepali <-> English date converter: active month ko midpoint convert garne
+  // Nepali <-> English date converter: keep the exact active anchor date
   const togglePref = (next: "bs" | "ad") => {
     if (next === calPref) return;
     if (next === "ad") {
-      const daysInBS = getBSDaysInMonth(bsYear, bsMonth);
-      const center = bsToDate(bsYear, bsMonth, Math.ceil(daysInBS / 2));
-      setAdYear(Math.max(minAd.year, center.getFullYear()));
-      setAdMonth(center.getMonth());
+      setAdYear(Math.max(minAd.year, anchorDate.getFullYear()));
+      setAdMonth(anchorDate.getMonth());
     } else {
-      const center = new Date(adYear, adMonth, 15);
-      const parts = getBSDateParts(center);
+      const parts = getBSDateParts(anchorDate);
       setBsYear(Math.max(minBs.year, parts.year));
       setBsMonth(parts.month);
     }
@@ -403,13 +407,19 @@ export default function MyCalendar() {
         secondary: `${NEPALI_MONTHS_EN[bsMonth]} ${bsYear}`,
       };
     }
-    const mid = new Date(adYear, adMonth, 15);
-    const mp = getBSDateParts(mid);
+    const refDate =
+      anchorDate.getFullYear() === adYear && anchorDate.getMonth() === adMonth
+        ? anchorDate
+        : new Date(adYear, adMonth, 1);
+    const mp = getBSDateParts(refDate);
     return {
       primary: `${AD_MONTHS_EN[adMonth]} ${adYear}`,
       secondary: `${NEPALI_MONTHS_NP[mp.month]} ${toNepaliDigits(mp.year)}`,
     };
-  }, [calPref, bsYear, bsMonth, adYear, adMonth]);
+  }, [calPref, bsYear, bsMonth, adYear, adMonth, anchorDate]);
+
+  const isPrevDisabled = calPref === "bs" ? atMinBs : atMinAd;
+  const isNextDisabled = calPref === "bs" ? atMaxBs : atMaxAd;
 
   return (
     <div className="space-y-5">
@@ -425,41 +435,83 @@ export default function MyCalendar() {
           </div>
         </div>
         <div className="flex items-center gap-1.5">
-          <button onClick={prevMonth} aria-label="Previous" className="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 flex items-center justify-center transition-colors">
+          <button
+            type="button"
+            onClick={prevMonth}
+            disabled={isPrevDisabled}
+            aria-label="Previous month"
+            className="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          >
             <ChevronLeft size={14} />
           </button>
 
           {calPref === "bs" ? (
             <>
-              <select value={bsYear} onChange={(e) => setBsYear(Number(e.target.value))} className={selectCompact()}>
+              <select
+                aria-label="Select BS year"
+                value={bsYear}
+                onChange={(e) => updateBsPeriod(Number(e.target.value), bsMonth)}
+                className={selectCompact()}
+              >
                 {bsYearOptions.map((y) => <option key={y} value={y}>{toNepaliDigits(y)}</option>)}
               </select>
-              <select value={bsMonth} onChange={(e) => setBsMonth(Number(e.target.value))} className={selectCompact()}>
+              <select
+                aria-label="Select BS month"
+                value={bsMonth}
+                onChange={(e) => updateBsPeriod(bsYear, Number(e.target.value))}
+                className={selectCompact()}
+              >
                 {bsMonthOptions.map((m) => <option key={m} value={m}>{NEPALI_MONTHS_NP[m]}</option>)}
               </select>
             </>
           ) : (
             <>
-              <select value={adYear} onChange={(e) => setAdYear(Number(e.target.value))} className={selectCompact()}>
+              <select
+                aria-label="Select AD year"
+                value={adYear}
+                onChange={(e) => updateAdPeriod(Number(e.target.value), adMonth)}
+                className={selectCompact()}
+              >
                 {adYearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
-              <select value={adMonth} onChange={(e) => setAdMonth(Number(e.target.value))} className={selectCompact()}>
+              <select
+                aria-label="Select AD month"
+                value={adMonth}
+                onChange={(e) => updateAdPeriod(adYear, Number(e.target.value))}
+                className={selectCompact()}
+              >
                 {adMonthOptions.map((m) => <option key={m} value={m}>{AD_MONTHS_EN[m]}</option>)}
               </select>
             </>
           )}
 
-          <button onClick={nextMonth} aria-label="Next" className="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 flex items-center justify-center transition-colors">
+          <button
+            type="button"
+            onClick={nextMonth}
+            disabled={isNextDisabled}
+            aria-label="Next month"
+            className="w-8 h-8 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-500 flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+          >
             <ChevronRight size={14} />
           </button>
 
           <div className="w-px h-6 bg-slate-200 mx-0.5" />
 
           <div className="flex items-center rounded-lg bg-white border border-slate-200 p-0.5 text-xs font-semibold">
-            <button onClick={() => togglePref("bs")} className={`px-2.5 py-1 rounded-md transition-all ${calPref === "bs" ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"}`}>
+            <button
+              type="button"
+              aria-pressed={calPref === "bs"}
+              onClick={() => togglePref("bs")}
+              className={`px-2.5 py-1 rounded-md transition-all ${calPref === "bs" ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"}`}
+            >
               नेपाली
             </button>
-            <button onClick={() => togglePref("ad")} className={`px-2.5 py-1 rounded-md transition-all ${calPref === "ad" ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"}`}>
+            <button
+              type="button"
+              aria-pressed={calPref === "ad"}
+              onClick={() => togglePref("ad")}
+              className={`px-2.5 py-1 rounded-md transition-all ${calPref === "ad" ? "bg-primary text-white shadow-sm" : "text-slate-600 hover:bg-slate-50"}`}
+            >
               English
             </button>
           </div>
@@ -540,7 +592,11 @@ export default function MyCalendar() {
             return (
               <button
                 key={gd.adDateKey}
-                onClick={() => setSelected(dayData || { date: gd.adDateKey, status: "none", checkIn: null, checkOut: null, workingMinutes: 0, holidayTitle: null })}
+                type="button"
+                onClick={() => {
+                  setAnchorDate(gd.adDate);
+                  setSelected(dayData || { date: gd.adDateKey, status: "none", checkIn: null, checkOut: null, workingMinutes: 0, holidayTitle: null });
+                }}
                 className={`relative rounded-xl border p-1.5 min-h-[82px] flex flex-col items-center justify-center transition-all active:scale-[0.97] hover:shadow-md cursor-pointer ${cellBg} ${isTodayCell ? "ring-2 ring-primary/30 shadow-md" : ""}`}
               >
                 {/* converted date - top right */}
@@ -644,11 +700,19 @@ export default function MyCalendar() {
       {/* Day detail modal */}
       {selected && (
         <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50" onClick={() => setSelected(null)}>
-          <div className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md p-6 space-y-4 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div
+            ref={detailModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Day details"
+            tabIndex={-1}
+            className="bg-white rounded-t-3xl sm:rounded-3xl w-full max-w-md p-6 space-y-4 max-h-[85vh] overflow-y-auto outline-none"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between">
               <div>
                 {(() => {
-                  const selDate = new Date(selected.date);
+                  const selDate = parseLocalDate(selected.date);
                   const engFull = selDate.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
                   const nepFull = toBS(selDate);
                   return (

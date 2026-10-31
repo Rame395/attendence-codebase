@@ -6,6 +6,7 @@ import CompanySettingModel from "../model/CompanySettingModel.js";
 import AuditLogService from "./AuditLogService.js";
 import NotificationService from "./NotificationService.js";
 import { assertEmployeeInTeam } from "../utils/branchScope.js";
+import { tzDayRange, parseTimeOnDate } from "../utils/timezone.js";
 
 // attendance correction service
 class AttendanceCorrectionService {
@@ -23,11 +24,7 @@ class AttendanceCorrectionService {
         }
 
         // tyo date ko attendance record khojne
-        const date = new Date(data.date);
-        const dayStart = new Date(date);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(date);
-        dayEnd.setHours(23, 59, 59, 999);
+        const { start: dayStart, end: dayEnd } = tzDayRange(data.date);
 
         const attendance = await AttendanceModel.findOne({
             employee: user.employee,
@@ -48,11 +45,27 @@ class AttendanceCorrectionService {
             employee: user.employee,
             attendance: attendance?._id ?? null,
             date: dayStart,
-            requestedCheckIn: data.requestedCheckIn ? new Date(data.requestedCheckIn) : null,
-            requestedCheckOut: data.requestedCheckOut ? new Date(data.requestedCheckOut) : null,
+            requestedCheckIn: parseTimeOnDate(data.date, data.requestedCheckIn),
+            requestedCheckOut: parseTimeOnDate(data.date, data.requestedCheckOut),
             reason: data.reason,
             createdBy: data.userId,
         });
+
+        await AuditLogService.logAction(
+            data.userId,
+            "Correction Requested",
+            "attendance",
+            {
+                targetId: created._id.toString(),
+                employee: (user.employee as any)?._id?.toString?.() ?? user.employee.toString(),
+                newData: {
+                    date: data.date,
+                    requestedCheckIn: data.requestedCheckIn ?? null,
+                    requestedCheckOut: data.requestedCheckOut ?? null,
+                    reason: data.reason,
+                },
+            },
+        );
 
         // admins/HR/manager lai notify garne
         const empName = (user.employee as any)?.name || user.username || "An employee";
@@ -123,10 +136,7 @@ class AttendanceCorrectionService {
 
         if (payload.status === "approved") {
             // attendance record update garne
-            const dayStart = new Date(request.date);
-            dayStart.setHours(0, 0, 0, 0);
-            const dayEnd = new Date(request.date);
-            dayEnd.setHours(23, 59, 59, 999);
+            const { start: dayStart, end: dayEnd } = tzDayRange(new Date(request.date));
 
             let attendance: any = await AttendanceModel.findOne({
                 employee: request.employee._id,
@@ -188,6 +198,13 @@ class AttendanceCorrectionService {
                 oldData,
                 newData: JSON.parse(JSON.stringify(attendance.toJSON())),
                 reason: `Approved correction: ${request.reason}`,
+                ipAddress,
+            });
+        } else {
+            await AuditLogService.logAction(reviewerId, "Correction Rejected", "attendance", {
+                targetId: request._id?.toString(),
+                employee: request.employee._id?.toString(),
+                reason: payload.reviewReason || request.reason,
                 ipAddress,
             });
         }

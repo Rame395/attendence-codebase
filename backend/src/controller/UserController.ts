@@ -452,7 +452,7 @@ class UserController {
       invalidateUserSession(id);
 
       // audit log - user updated
-      AuditLogService.logAction(
+      await AuditLogService.logAction(
         req.loggedInUser?._id?.toString(),
         "User Updated",
         "user",
@@ -531,7 +531,7 @@ class UserController {
       await UserDirectoryService.removeByEmail((user as any).email);
 
       // audit log - user deleted
-      AuditLogService.logAction(
+      await AuditLogService.logAction(
         req.loggedInUser?._id?.toString(),
         "User Deleted",
         "user",

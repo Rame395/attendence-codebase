@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useId } from "react";
 import { createPortal } from "react-dom";
 import { X, Navigation, Crosshair, Building2, Plus, AlertTriangle, Bookmark, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../config/ApiClient";
 import GeofenceMap from "./GeofenceMap";
 import { toastSingleApiError } from "../../lib/apiErrors";
+import { useModalAccessibility } from "../../lib/hooks/useModalAccessibility";
 
 type EntityType = "department" | "designation" | "branch";
 
@@ -130,6 +131,8 @@ export default function EntityCreateModal({
   const [showQuickDeptModal, setShowQuickDeptModal] = useState(false);
   // radius input lai text-like controlled rakhnu (khali gareko bela 20 ma na phirne hami)
   const [radiusInput, setRadiusInput] = useState<string>(String(form.geofenceRadius || initial?.geofenceRadius || 20));
+  const fieldId = useId();
+  const modalRef = useModalAccessibility<HTMLDivElement>(onClose, open);
 
   // Auto-save draft while typing in create mode
   useEffect(() => {
@@ -321,6 +324,7 @@ export default function EntityCreateModal({
   const handleBranchChange = (b: string) => {
     setForm((f) => ({ ...f, branch: b, department: "" }));
     setDepartments([]);
+    setDepartmentsLoaded(false);
   };
 
   const addDeptRow = () =>
@@ -382,8 +386,8 @@ export default function EntityCreateModal({
       payload.latitude = form.latitude || 0;
       payload.longitude = form.longitude || 0;
       payload.geofenceRadius = form.geofenceRadius || 20;
-    } else if (form.description?.trim()) {
-      payload.description = form.description.trim();
+    } else {
+      payload.description = form.description?.trim() || "";
     }
 
     // branch/department lai branch liyeko - form select priority, fallback extraPayload
@@ -466,7 +470,14 @@ export default function EntityCreateModal({
 
   const content = (
     <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[70] p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-xl w-full my-8 max-w-lg">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${editId ? "Edit" : "Add"} ${TITLES[entity]}`}
+        tabIndex={-1}
+        className="bg-white rounded-2xl shadow-xl w-full my-8 max-w-lg outline-none"
+      >
         <div className="flex items-center justify-between p-6 border-b border-slate-100">
           <div className="flex items-center gap-2.5 flex-wrap">
             <h3 className="font-bold text-lg text-slate-900">{editId ? "Edit" : "Add"} {TITLES[entity]}</h3>
@@ -487,7 +498,7 @@ export default function EntityCreateModal({
                 <RotateCcw size={13} /> Clear
               </button>
             )}
-            <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
+            <button type="button" onClick={onClose} aria-label="Close modal" className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
           </div>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
@@ -539,7 +550,7 @@ export default function EntityCreateModal({
           {entity === "department" && (
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-slate-700">Branch</label>
+                <label htmlFor={`${fieldId}-branch`} className="block text-sm font-medium text-slate-700">Branch</label>
                 <button
                   type="button"
                   onClick={() => setShowQuickBranchModal(true)}
@@ -548,7 +559,7 @@ export default function EntityCreateModal({
                   <Plus size={12} /> New Branch
                 </button>
               </div>
-              <select value={form.branch || ""} onChange={(e) => handleBranchChange(e.target.value)} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white" required>
+              <select id={`${fieldId}-branch`} value={form.branch || ""} onChange={(e) => handleBranchChange(e.target.value)} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white" required>
                 <option value="">{branchesLoaded && branches.length === 0 ? "⚠️ No branches added — create a branch first" : "Select branch"}</option>
                 {branches.map((b) => (
                   <option key={b._id} value={b._id}>{b.name}</option>
@@ -562,7 +573,7 @@ export default function EntityCreateModal({
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-slate-700">Branch</label>
+                  <label htmlFor={`${fieldId}-desig-branch`} className="block text-sm font-medium text-slate-700">Branch</label>
                   <button
                     type="button"
                     onClick={() => setShowQuickBranchModal(true)}
@@ -571,7 +582,7 @@ export default function EntityCreateModal({
                     <Plus size={12} /> New
                   </button>
                 </div>
-                <select value={form.branch || ""} onChange={(e) => handleBranchChange(e.target.value)} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white" required>
+                <select id={`${fieldId}-desig-branch`} value={form.branch || ""} onChange={(e) => handleBranchChange(e.target.value)} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white" required>
                   <option value="">{branchesLoaded && branches.length === 0 ? "⚠️ No branches added" : "Select branch"}</option>
                   {branches.map((b) => (
                     <option key={b._id} value={b._id}>{b.name}</option>
@@ -580,7 +591,7 @@ export default function EntityCreateModal({
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-slate-700">Department</label>
+                  <label htmlFor={`${fieldId}-desig-dept`} className="block text-sm font-medium text-slate-700">Department</label>
                   {form.branch && (
                     <button
                       type="button"
@@ -591,13 +602,15 @@ export default function EntityCreateModal({
                     </button>
                   )}
                 </div>
-                <select value={form.department || ""} disabled={!form.branch} onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white disabled:bg-slate-50 disabled:text-slate-400" required>
+                <select id={`${fieldId}-desig-dept`} value={form.department || ""} disabled={!form.branch} onChange={(e) => setForm((f) => ({ ...f, department: e.target.value }))} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white disabled:bg-slate-50 disabled:text-slate-400" required>
                   <option value="">
                     {!form.branch
                       ? "Select a branch first"
-                      : departmentsLoaded && departments.length === 0
-                        ? "⚠️ No departments in branch"
-                        : "Select department"}
+                      : !departmentsLoaded
+                        ? "Loading departments..."
+                        : departments.length === 0
+                          ? "⚠️ No departments in branch"
+                          : "Select department"}
                   </option>
                   {departments.map((d) => (
                     <option key={d._id} value={d._id}>{d.name}</option>
@@ -609,13 +622,13 @@ export default function EntityCreateModal({
 
           <div className={`grid ${entity === "designation" ? "grid-cols-1" : "grid-cols-2"} gap-4`}>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
-              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+              <label htmlFor={`${fieldId}-name`} className="block text-sm font-medium text-slate-700 mb-1">Name</label>
+              <input id={`${fieldId}-name`} type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
             </div>
             {(entity === "department" || entity === "branch") && (
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Code</label>
-                <input type="text" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary uppercase" required />
+                <label htmlFor={`${fieldId}-code`} className="block text-sm font-medium text-slate-700 mb-1">Code</label>
+                <input id={`${fieldId}-code`} type="text" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value.toUpperCase() })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary uppercase" required />
               </div>
             )}
           </div>
@@ -624,12 +637,12 @@ export default function EntityCreateModal({
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Address</label>
-                  <textarea value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" rows={2} required />
+                  <label htmlFor={`${fieldId}-address`} className="block text-sm font-medium text-slate-700 mb-1">Address</label>
+                  <textarea id={`${fieldId}-address`} value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" rows={2} required />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
-                  <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={15} placeholder="Numbers only" value={form.phone} onChange={(e) => handlePhoneChange(e.target.value)} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" />
+                  <label htmlFor={`${fieldId}-phone`} className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+                  <input id={`${fieldId}-phone`} type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={15} placeholder="Numbers only" value={form.phone} onChange={(e) => handlePhoneChange(e.target.value)} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" />
                 </div>
               </div>
 
@@ -658,16 +671,17 @@ export default function EntityCreateModal({
 
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Latitude</label>
-                    <input type="number" step="any" value={form.latitude || ""} onChange={(e) => setForm({ ...form, latitude: Number(e.target.value) })} className="w-full border border-border rounded-lg px-3 py-2 text-xs outline-none focus:border-primary" />
+                    <label htmlFor={`${fieldId}-lat`} className="block text-xs font-medium text-slate-600 mb-1">Latitude</label>
+                    <input id={`${fieldId}-lat`} type="number" step="any" value={form.latitude || ""} onChange={(e) => setForm({ ...form, latitude: Number(e.target.value) })} className="w-full border border-border rounded-lg px-3 py-2 text-xs outline-none focus:border-primary" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Longitude</label>
-                    <input type="number" step="any" value={form.longitude || ""} onChange={(e) => setForm({ ...form, longitude: Number(e.target.value) })} className="w-full border border-border rounded-lg px-3 py-2 text-xs outline-none focus:border-primary" />
+                    <label htmlFor={`${fieldId}-lng`} className="block text-xs font-medium text-slate-600 mb-1">Longitude</label>
+                    <input id={`${fieldId}-lng`} type="number" step="any" value={form.longitude || ""} onChange={(e) => setForm({ ...form, longitude: Number(e.target.value) })} className="w-full border border-border rounded-lg px-3 py-2 text-xs outline-none focus:border-primary" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Radius (m)</label>
+                    <label htmlFor={`${fieldId}-radius`} className="block text-xs font-medium text-slate-600 mb-1">Radius (m)</label>
                     <input
+                      id={`${fieldId}-radius`}
                       type="text"
                       inputMode="numeric"
                       value={radiusInput}
@@ -698,6 +712,7 @@ export default function EntityCreateModal({
                         <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
                           <input
                             type="text"
+                            aria-label={`Department ${idx + 1} name`}
                             value={row.name}
                             onChange={(e) => updateDeptRow(idx, { name: e.target.value })}
                             placeholder="Department name"
@@ -705,17 +720,19 @@ export default function EntityCreateModal({
                           />
                           <input
                             type="text"
+                            aria-label={`Department ${idx + 1} code`}
                             value={row.code}
                             onChange={(e) => updateDeptRow(idx, { code: e.target.value.toUpperCase() })}
                             placeholder="Code"
                             className="w-full border border-border rounded-lg px-3 py-2 text-xs outline-none focus:border-primary uppercase"
                           />
-                          <button type="button" onClick={() => removeDeptRow(idx)} className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors" title="Remove department">
+                          <button type="button" onClick={() => removeDeptRow(idx)} aria-label={`Remove department ${idx + 1}`} className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors" title="Remove department">
                             <X size={14} />
                           </button>
                         </div>
                         <input
                           type="text"
+                          aria-label={`Department ${idx + 1} designations`}
                           value={row.designations}
                           onChange={(e) => updateDeptRow(idx, { designations: e.target.value })}
                           placeholder="Designations — comma separated (e.g. Manager, Officer, Assistant)"
@@ -733,8 +750,8 @@ export default function EntityCreateModal({
             </>
           ) : (
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-              <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" rows={3} />
+              <label htmlFor={`${fieldId}-description`} className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+              <textarea id={`${fieldId}-description`} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" rows={3} />
             </div>
           )}
 

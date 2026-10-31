@@ -100,6 +100,8 @@ export default function Dashboard() {
   const [departments, setDepartments] = useState<IFilterOption[]>([]);
   const [designations, setDesignations] = useState<IFilterOption[]>([]);
   const [branches, setBranches] = useState<IFilterOption[]>([]);
+  const [deptLoading, setDeptLoading] = useState(false);
+  const [desigLoading, setDesigLoading] = useState(false);
 
   // time anusar greeting
   const hour = new Date().getHours();
@@ -177,6 +179,8 @@ export default function Dashboard() {
         setDepartments((deptRes.data as IFilterOption[]) ?? []);
       } catch {
         /* silently fail */
+      } finally {
+        if (active) setDeptLoading(false);
       }
     })();
     return () => {
@@ -197,6 +201,8 @@ export default function Dashboard() {
         setDesignations((desigRes.data as IFilterOption[]) ?? []);
       } catch {
         /* silently fail */
+      } finally {
+        if (active) setDesigLoading(false);
       }
     })();
     return () => {
@@ -444,18 +450,22 @@ export default function Dashboard() {
           {/* Filters - branch -> department -> designation cascade */}
           <div className="mt-4 flex flex-col sm:flex-row flex-wrap items-end gap-3">
             <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Branch</label>
+              <label htmlFor="dashboard-branch-filter" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Branch</label>
               <select
+                id="dashboard-branch-filter"
                 value={filters.branchId}
                 onChange={(e) => {
+                  const nextBranch = e.target.value;
                   setFilters((prev) => ({
                     ...prev,
-                    branchId: e.target.value,
+                    branchId: nextBranch,
                     departmentId: "",
                     designationId: "",
                   }));
                   setDepartments([]);
                   setDesignations([]);
+                  setDeptLoading(Boolean(nextBranch));
+                  setDesigLoading(false);
                 }}
                 className="rounded-xl border border-border px-3 py-2 text-sm bg-white outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 min-w-[180px]"
               >
@@ -466,26 +476,31 @@ export default function Dashboard() {
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Department</label>
+              <label htmlFor="dashboard-dept-filter" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Department</label>
               <select
+                id="dashboard-dept-filter"
                 value={filters.departmentId}
-                disabled={!filters.branchId}
+                disabled={!filters.branchId || deptLoading}
                 onChange={(e) => {
+                  const nextDept = e.target.value;
                   setFilters((prev) => ({
                     ...prev,
-                    departmentId: e.target.value,
+                    departmentId: nextDept,
                     designationId: "",
                   }));
                   setDesignations([]);
+                  setDesigLoading(Boolean(nextDept));
                 }}
                 className="rounded-xl border border-border px-3 py-2 text-sm bg-white outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 min-w-[180px] disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
               >
                 <option value="">
                   {!filters.branchId
                     ? "Select a branch first"
-                    : departments.length === 0
-                      ? "No departments in this branch"
-                      : "Select Department"}
+                    : deptLoading
+                      ? "Loading departments..."
+                      : departments.length === 0
+                        ? "No departments in this branch"
+                        : "Select Department"}
                 </option>
                 {departments.map((dept) => (
                   <option key={dept._id} value={dept._id}>{dept.name}</option>
@@ -493,19 +508,22 @@ export default function Dashboard() {
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Designation</label>
+              <label htmlFor="dashboard-desig-filter" className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Designation</label>
               <select
+                id="dashboard-desig-filter"
                 value={filters.designationId}
-                disabled={!filters.departmentId}
+                disabled={!filters.departmentId || desigLoading}
                 onChange={(e) => setFilter("designationId", e.target.value)}
                 className="rounded-xl border border-border px-3 py-2 text-sm bg-white outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 min-w-[180px] disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed"
               >
                 <option value="">
                   {!filters.departmentId
                     ? "Select a department first"
-                    : designations.length === 0
-                      ? "No designations in this department"
-                      : "Select Designation"}
+                    : desigLoading
+                      ? "Loading designations..."
+                      : designations.length === 0
+                        ? "No designations in this department"
+                        : "Select Designation"}
                 </option>
                 {designations.map((desig) => (
                   <option key={desig._id} value={desig._id}>{desig.name}</option>
@@ -514,10 +532,13 @@ export default function Dashboard() {
             </div>
             {hasActiveFilters && (
               <button
+                type="button"
                 onClick={() => {
                   setFilters({ branchId: "", departmentId: "", designationId: "" });
                   setDepartments([]);
                   setDesignations([]);
+                  setDeptLoading(false);
+                  setDesigLoading(false);
                 }}
                 className="rounded-xl border border-border px-4 py-2 text-sm text-slate-600 hover:bg-secondary/30 transition-colors"
               >

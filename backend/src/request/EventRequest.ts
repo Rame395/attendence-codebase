@@ -11,7 +11,7 @@ export const eventTypeEnum = z.enum([
 
 const dateSchema = z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/));
 
-export const CreateEventDTO = z.object({
+const BaseEventSchema = z.object({
     title: z.string().min(2).max(200),
     type: eventTypeEnum,
     date: dateSchema,
@@ -19,12 +19,29 @@ export const CreateEventDTO = z.object({
     endTime: z.string().optional(),
     location: z.string().optional(),
     description: z.string().optional(),
-    branch: z.string().optional(),
-    isForAllEmployees: z.boolean().optional().default(true),
-    targetType: z.enum(["all", "branch", "department", "employee", "role"]).optional().default("all"),
-    department: z.string().optional(),
-    employee: z.string().optional(),
+    branch: z.string().optional().nullable(),
+    isForAllEmployees: z.boolean().optional(),
+    targetType: z.enum(["all", "branch", "department", "employee", "role"]).optional(),
+    department: z.string().optional().nullable(),
+    employee: z.string().optional().nullable(),
     roles: z.array(z.string()).optional(),
 });
 
-export const UpdateEventDTO = CreateEventDTO.partial();
+const validateTimeOrder = (data: { startTime?: string | undefined; endTime?: string | undefined }) => {
+    const start = data.startTime?.trim();
+    const end = data.endTime?.trim();
+    if (start && end) {
+        return end > start;
+    }
+    return true;
+};
+
+export const CreateEventDTO = BaseEventSchema.refine(validateTimeOrder, {
+    message: "End time must be after start time",
+    path: ["endTime"],
+});
+
+export const UpdateEventDTO = BaseEventSchema.partial().refine(validateTimeOrder, {
+    message: "End time must be after start time",
+    path: ["endTime"],
+});

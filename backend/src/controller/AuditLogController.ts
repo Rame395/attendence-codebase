@@ -43,7 +43,7 @@ class AuditLogController {
                 throw { code: 404, message: "Audit log not found" };
             }
 
-            AuditLogService.logAction(
+            await AuditLogService.logAction(
                 req.loggedInUser?._id?.toString(),
                 "Audit Log Deleted",
                 "audit",
@@ -65,7 +65,7 @@ class AuditLogController {
         try {
             await AuditLogService.clearAuditLogs();
 
-            AuditLogService.logAction(
+            await AuditLogService.logAction(
                 req.loggedInUser?._id?.toString(),
                 "Audit History Cleared",
                 "audit",

@@ -148,8 +148,8 @@ export default function Branches() {
                 </div>
 
                 <div className="flex gap-2 mt-3">
-                  <button onClick={() => openEdit(b)} className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors"><Edit3 size={14} /></button>
-                  <button onClick={() => setDeleteTarget(b)} className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
+                  <button type="button" onClick={() => openEdit(b)} aria-label={`Edit ${b.name}`} title="Edit" className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors"><Edit3 size={14} /></button>
+                  <button type="button" onClick={() => setDeleteTarget(b)} aria-label={`Delete ${b.name}`} title="Delete" className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={14} /></button>
                 </div>
               </div>
             ))}

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Trash2, ShieldAlert, X } from "lucide-react";
+import { useModalAccessibility } from "../../lib/hooks/useModalAccessibility";
 
 type Variant = "danger" | "sensitive";
 
@@ -39,6 +40,7 @@ export default function ConfirmDialog({
   const isSensitive = variant === "sensitive";
   const [agreed, setAgreed] = useState(false);
   const [typed, setTyped] = useState("");
+  const dialogRef = useModalAccessibility(() => { if (!isLoading) onClose(); }, open);
 
   // reset when opened/closed or variant changes
   useEffect(() => {
@@ -47,21 +49,6 @@ export default function ConfirmDialog({
       setTyped("");
     }
   }, [open, variant]);
-
-  // ESC to close, lock body scroll
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !isLoading) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [open, onClose, isLoading]);
 
   if (!open) return null;
 
@@ -78,6 +65,7 @@ export default function ConfirmDialog({
 
       {/* card */}
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-title"
@@ -157,10 +145,11 @@ export default function ConfirmDialog({
               </label>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                <label htmlFor="confirm-type-input" className="block text-sm font-medium text-slate-700 mb-1.5">
                   Type <span className="font-mono font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded border border-red-200">{confirmWord}</span> to confirm
                 </label>
                 <input
+                  id="confirm-type-input"
                   type="text"
                   value={typed}
                   onChange={(e) => setTyped(e.target.value)}

@@ -128,7 +128,7 @@ class CompanySettingController {
       );
 
       // audit log - settings changed
-      AuditLogService.logAction(
+      await AuditLogService.logAction(
         userId?.toString(),
         "Settings Updated",
         "settings",

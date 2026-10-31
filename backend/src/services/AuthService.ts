@@ -21,6 +21,7 @@ import UserModel from "../model/UserModel.js";
 import DepartmentModel from "../model/DepartmentModel.js";
 import BranchModel from "../model/BranchModel.js";
 import EmployeeService from "./EmployeeService.js";
+import AuditLogService from "./AuditLogService.js";
 import { UserRole } from "../types/index.js";
 
 class AuthService {
@@ -516,6 +517,23 @@ class AuthService {
     if (data.phone && employee) {
       await PhoneDirectoryService.confirmEmployee(data.phone, employee._id);
     }
+
+    // audit log - employee / user created
+    await AuditLogService.logAction(
+      createdBy?.toString() || user?._id?.toString(),
+      data.role === "employee" ? "Employee Created" : "User Created",
+      data.role === "employee" ? "employee" : "user",
+      {
+        targetId: (data.role === "employee" ? employee?._id : user?._id)?.toString(),
+        employee: employee?._id?.toString(),
+        newData: {
+          employeeId: employee?.employeeId,
+          name: employee?.name,
+          email: data.email,
+          role: data.role,
+        },
+      },
+    );
 
     // Send email - skip welcome temp password email if linking to an existing active user account
     let emailSent = true;

@@ -8,7 +8,7 @@ import HolidayModel from "../model/HolidayModel.js";
 import LeaveRequestModel from "../model/LeaveRequestModel.js";
 import { distanceInMeters } from "../utils/geofence.js";
 import NotificationService from "./NotificationService.js";
-import { COMPANY_TIMEZONE, timeZoneOffsetMinutes, wallClockParts, tzInstant } from "../utils/timezone.js";
+import { COMPANY_TIMEZONE, timeZoneOffsetMinutes, wallClockParts, tzInstant, tzDayRange, parseTimeOnDate } from "../utils/timezone.js";
 import { countActualEmployees } from "../utils/employeeCount.js";
 
 // GPS accuracy max limit (meter) - .env bata override garna milcha, default 300m (indoor/poor signal samet cover)
@@ -50,7 +50,7 @@ class AttendanceService {
         return {
             today: now,
             start: tzInstant(offset, wall.year, wall.month, wall.day, 0),
-            end: tzInstant(offset, wall.year, wall.month, wall.day, 1440),
+            end: new Date(tzInstant(offset, wall.year, wall.month, wall.day, 1440).getTime() - 1),
             offset,
         };
     }
@@ -420,8 +420,11 @@ class AttendanceService {
         const { employee } = await this.getEmployeeByUserId(userId);
 
         // month: 1-12 (JS Date month 0-11 ho so -1)
-        const startDate = new Date(year, month - 1, 1, 0, 0, 0, 0);
-        const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+        const totalDays = new Date(year, month, 0).getDate();
+        const firstDayStr = `${year}-${String(month).padStart(2, "0")}-01`;
+        const lastDayStr = `${year}-${String(month).padStart(2, "0")}-${String(totalDays).padStart(2, "0")}`;
+        const startDate = tzDayRange(firstDayStr).start;
+        const endDate = tzDayRange(lastDayStr).end;
 
         const [records, holidays, leaves] = await Promise.all([
             AttendanceModel.find({
@@ -449,8 +452,9 @@ class AttendanceService {
         // employee join bhaye pachi ko din matra "absent" count huncha.
         // joiningDate nabhaye created date lai base manaune (naya user ma 7 absent auto na dekhau).
         const empStartRaw: any = (employeeFull as any)?.joiningDate || (employeeFull as any)?.createdAt;
-        const empStart = empStartRaw ? new Date(empStartRaw) : null;
-        if (empStart && !Number.isNaN(empStart.getTime())) empStart.setHours(0, 0, 0, 0);
+        const empStartKey = empStartRaw && !Number.isNaN(new Date(empStartRaw).getTime())
+            ? tzDayRange(new Date(empStartRaw)).dateKey
+            : null;
 
         // employee lai apply hune holiday matra (branch/dept/gender filter)
         const applicableHolidays = AttendanceService.filterApplicableHolidays(holidays, employeeFull);
@@ -459,23 +463,20 @@ class AttendanceService {
         const settings = await CompanySettingModel.findOne().lean();
         const weeklyHolidays: string[] = settings?.weeklyHolidays || ["saturday"];
 
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
+        const todayKey = tzDayRange(new Date()).dateKey;
 
         const days: any[] = [];
-        const totalDays = endDate.getDate();
 
         for (let d = 1; d <= totalDays; d++) {
-            const date = new Date(year, month - 1, d);
+            const date = new Date(Date.UTC(year, month - 1, d));
             const dateKey = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 
             // yo din ko range (multi-day holiday match garna)
-            const dayStart = new Date(year, month - 1, d, 0, 0, 0, 0);
-            const dayEnd = new Date(year, month - 1, d, 23, 59, 59, 999);
+            const { start: dayStart, end: dayEnd } = tzDayRange(dateKey);
 
             const record = records.find((r: any) => {
-                const rd = new Date(r.date);
-                return rd.getFullYear() === year && rd.getMonth() === month - 1 && rd.getDate() === d;
+                if (!r.date) return false;
+                return tzDayRange(new Date(r.date)).dateKey === dateKey;
             });
 
             const holiday = applicableHolidays.find((h: any) => {
@@ -485,30 +486,28 @@ class AttendanceService {
             });
 
             const onLeave = leaves.some((l: any) => {
-                const ls = new Date(l.startDate);
-                const le = new Date(l.endDate);
-                const day = new Date(year, month - 1, d);
-                return day >= new Date(ls.getFullYear(), ls.getMonth(), ls.getDate()) &&
-                    day <= new Date(le.getFullYear(), le.getMonth(), le.getDate());
+                const lsKey = tzDayRange(new Date(l.startDate)).dateKey;
+                const leKey = tzDayRange(new Date(l.endDate)).dateKey;
+                return dateKey >= lsKey && dateKey <= leKey;
             });
 
-            const dayName = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"][date.getDay()];
+            const dayName = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"][date.getUTCDay()];
 
             let status = "none";
             if (holiday) status = "holiday";
             else if (onLeave) status = "leave";
             else if (record) status = record.status;
             else if (weeklyHolidays.includes(dayName)) status = "weekend";
-            else if (date < todayStart) {
+            else if (dateKey < todayKey) {
                 // join hune aghi ko din pani absent chaina - "none" (no data) hunxa
-                status = empStart && date < empStart ? "none" : "absent";
+                status = empStartKey && dateKey < empStartKey ? "none" : "absent";
             }
 
             // join aghiko din ma auto-baneko record (check-in/out bina ko absent/
             // leave) lai pani count nagarne - naya employee ko rate 0 bata start huncha.
             // Real activity (check-in/out bhayeko) bhaye dekhaune.
             const hasActivity = !!(record?.checkIn?.time || record?.checkOut?.time);
-            if (empStart && date < empStart && !hasActivity) status = "none";
+            if (empStartKey && dateKey < empStartKey && !hasActivity) status = "none";
 
             days.push({
                 date: dateKey,
@@ -554,11 +553,7 @@ class AttendanceService {
         const query: any = {};
 
         if (filters.date) {
-            const d = new Date(filters.date);
-            const start = new Date(d);
-            start.setHours(0, 0, 0, 0);
-            const end = new Date(d);
-            end.setHours(23, 59, 59, 999);
+            const { start, end } = tzDayRange(String(filters.date));
             query.date = { $gte: start, $lte: end };
         }
         if (filters.branchId) query.branch = filters.branchId;
@@ -662,10 +657,7 @@ class AttendanceService {
             throw { code: 422, message: "Employee and date are required" };
         }
 
-        const dayStart = new Date(date);
-        dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(date);
-        dayEnd.setHours(23, 59, 59, 999);
+        const { start: dayStart, end: dayEnd } = tzDayRange(date);
 
         const emp: any = await EmployeeModel.findById(employee).select("branch");
         if (!emp) {
@@ -675,8 +667,12 @@ class AttendanceService {
             throw { code: 422, message: "Employee has no branch assigned" };
         }
 
-        const checkIn = checkInTime ? new Date(checkInTime) : null;
-        const checkOut = checkOutTime ? new Date(checkOutTime) : null;
+        const checkIn = parseTimeOnDate(date, checkInTime);
+        const checkOut = parseTimeOnDate(date, checkOutTime);
+
+        if (checkIn && checkOut && checkOut.getTime() < checkIn.getTime()) {
+            throw { code: 422, message: "Check-out time must be after check-in time" };
+        }
 
         let minutes = Number(workingMinutes);
         if (Number.isNaN(minutes) && checkIn && checkOut) {
@@ -726,23 +722,30 @@ class AttendanceService {
         if (data.checkInTime !== undefined) {
             record.checkIn = {
                 ...(record.checkIn?._doc ?? record.checkIn ?? {}),
-                time: data.checkInTime ? new Date(data.checkInTime) : null,
+                time: parseTimeOnDate(record.date, data.checkInTime),
             };
         }
 
         if (data.checkOutTime !== undefined) {
             record.checkOut = {
                 ...(record.checkOut?._doc ?? record.checkOut ?? {}),
-                time: data.checkOutTime ? new Date(data.checkOutTime) : null,
+                time: parseTimeOnDate(record.date, data.checkOutTime),
             };
+        }
+
+        if (record.checkIn?.time && record.checkOut?.time) {
+            const inTime = new Date(record.checkIn.time).getTime();
+            const outTime = new Date(record.checkOut.time).getTime();
+            if (outTime < inTime) {
+                throw { code: 422, message: "Check-out time must be after check-in time" };
+            }
+            if (data.workingMinutes === undefined) {
+                record.workingMinutes = Math.max(0, Math.round((outTime - inTime) / 60000));
+            }
         }
 
         if (data.workingMinutes !== undefined) {
             record.workingMinutes = Number(data.workingMinutes) || 0;
-        } else if (record.checkIn?.time && record.checkOut?.time) {
-            const inTime = new Date(record.checkIn.time).getTime();
-            const outTime = new Date(record.checkOut.time).getTime();
-            record.workingMinutes = Math.max(0, Math.round((outTime - inTime) / 60000));
         }
 
         await record.save();

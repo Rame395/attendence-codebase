@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useId } from "react";
 import { ChevronLeft, ChevronRight, CalendarCheck } from "lucide-react";
 import NepaliDate from "nepali-date-converter";
 import { getBSDaysInMonth, toNepaliDigits, nepaliDigitsToAscii, bsToDate, getBSDateParts } from "../../lib/nepali-date";
@@ -19,6 +19,7 @@ interface BSCalendarProps {
 }
 
 export default function BSCalendar({ value, onChange, min, max }: BSCalendarProps) {
+  const baseId = useId();
   const todayParts = useMemo(() => getBSDateParts(new Date()), []);
 
   const initialParts = value ? getBSDateParts(value) : { year: todayParts.year, month: todayParts.month, date: 1 };
@@ -147,7 +148,7 @@ export default function BSCalendar({ value, onChange, min, max }: BSCalendarProp
     <div className="p-3">
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <button type="button" onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-secondary/50 text-slate-500 transition-colors">
+        <button type="button" onClick={prevMonth} aria-label="Previous month" className="p-1.5 rounded-lg hover:bg-secondary/50 text-slate-500 transition-colors">
           <ChevronLeft size={18} />
         </button>
         <div className="text-center">
@@ -155,7 +156,7 @@ export default function BSCalendar({ value, onChange, min, max }: BSCalendarProp
             {BS_MONTHS_NP[viewMonth]} {toNepaliDigits(viewYear)}
           </p>
         </div>
-        <button type="button" onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-secondary/50 text-slate-500 transition-colors">
+        <button type="button" onClick={nextMonth} aria-label="Next month" className="p-1.5 rounded-lg hover:bg-secondary/50 text-slate-500 transition-colors">
           <ChevronRight size={18} />
         </button>
       </div>
@@ -164,8 +165,9 @@ export default function BSCalendar({ value, onChange, min, max }: BSCalendarProp
       <div className="mb-3 rounded-xl bg-slate-50 border border-slate-100 p-2">
         <div className="grid grid-cols-[1fr_1.4fr_1fr_auto] gap-1.5">
           <div>
-            <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">Day</label>
+            <label htmlFor={`${baseId}-day`} className="block text-[10px] font-semibold text-slate-400 mb-0.5">Day</label>
             <input
+              id={`${baseId}-day`}
               type="text"
               inputMode="numeric"
               maxLength={2}
@@ -177,8 +179,9 @@ export default function BSCalendar({ value, onChange, min, max }: BSCalendarProp
             />
           </div>
           <div>
-            <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">Month</label>
+            <label htmlFor={`${baseId}-month`} className="block text-[10px] font-semibold text-slate-400 mb-0.5">Month</label>
             <select
+              id={`${baseId}-month`}
               value={manualMonth}
               onChange={(e) => { setManualMonth(e.target.value); setManualError(null); }}
               className="w-full border border-border rounded-lg px-1.5 py-1.5 text-sm outline-none focus:border-primary bg-white"
@@ -189,8 +192,9 @@ export default function BSCalendar({ value, onChange, min, max }: BSCalendarProp
             </select>
           </div>
           <div>
-            <label className="block text-[10px] font-semibold text-slate-400 mb-0.5">Year</label>
+            <label htmlFor={`${baseId}-year`} className="block text-[10px] font-semibold text-slate-400 mb-0.5">Year</label>
             <input
+              id={`${baseId}-year`}
               type="text"
               inputMode="numeric"
               maxLength={4}

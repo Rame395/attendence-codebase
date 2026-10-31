@@ -3,6 +3,7 @@ import EventService from "../services/EventService.js";
 import { saveUploadedFile } from "../utils/fileStorage.js";
 import UserModel from "../model/UserModel.js";
 import NotificationService from "../services/NotificationService.js";
+import AuditLogService from "../services/AuditLogService.js";
 
 class EventController {
     getAll = async (req: Request, res: Response, next: NextFunction) => {
@@ -89,7 +90,30 @@ class EventController {
     // event targeting normalize garne - targetType anusar irrelevant fields clear garne
     private normalizeTargeting(payload: any) {
         const p = { ...payload };
-        const targetType = p.targetType || (p.isForAllEmployees ? "all" : p.branch ? "branch" : "all");
+        if (p.startTime && p.endTime && String(p.endTime).trim() <= String(p.startTime).trim()) {
+            throw { code: 422, message: "End time must be after start time" };
+        }
+
+        let targetType = p.targetType;
+        if (p.isForAllEmployees === false && (!targetType || targetType === "all")) {
+            if (p.branch) targetType = "branch";
+            else if (p.department) targetType = "department";
+            else if (p.employee) targetType = "employee";
+            else if (Array.isArray(p.roles) && p.roles.length > 0) targetType = "role";
+            else targetType = "branch";
+        } else if (p.isForAllEmployees === true) {
+            targetType = "all";
+        } else if (!targetType) {
+            targetType = p.branch
+                ? "branch"
+                : p.department
+                  ? "department"
+                  : p.employee
+                    ? "employee"
+                    : Array.isArray(p.roles) && p.roles.length > 0
+                      ? "role"
+                      : "all";
+        }
         p.targetType = targetType;
 
         if (!p.branch) p.branch = null;
@@ -143,6 +167,22 @@ class EventController {
                 createdBy: req.loggedInUser?._id,
             });
 
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Event Created",
+                "event",
+                {
+                    targetId: (event as any)?._id?.toString(),
+                    newData: {
+                        title: (event as any)?.title,
+                        type: (event as any)?.type,
+                        date: (event as any)?.date,
+                        targetType: (event as any)?.targetType,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
+
             // notify active users
             NotificationService.notifyEvent(event);
 
@@ -175,6 +215,22 @@ class EventController {
                 throw { code: 404, message: "Event not found" };
             }
 
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Event Updated",
+                "event",
+                {
+                    targetId: id,
+                    newData: {
+                        title: (event as any)?.title,
+                        type: (event as any)?.type,
+                        date: (event as any)?.date,
+                        targetType: (event as any)?.targetType,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
+
             res.json({
                 data: event,
                 message: "Event updated successfully",
@@ -198,6 +254,21 @@ class EventController {
             if (!event) {
                 throw { code: 404, message: "Event not found" };
             }
+
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Event Deleted",
+                "event",
+                {
+                    targetId: id,
+                    oldData: {
+                        title: (event as any)?.title,
+                        type: (event as any)?.type,
+                        date: (event as any)?.date,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
 
             res.json({
                 data: null,

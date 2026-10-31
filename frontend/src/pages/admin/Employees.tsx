@@ -29,8 +29,9 @@ import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import Avatar from "../../components/common/Avatar";
 import ProfileImageUpload from "../../components/common/ProfileImageUpload";
 import type { IProfileImage } from "../../lib/profileImage";
-import { formatDate, toLocalDateInput } from "../../lib/nepali-date";
+import { formatDate, toLocalDateInput, parseLocalDate } from "../../lib/nepali-date";
 import { useCalendarPreference } from "../../lib/hooks/useCalendarPreference";
+import { useModalAccessibility } from "../../lib/hooks/useModalAccessibility";
 import { useAppSelector } from "../../lib/hooks/redux";
 import BSCalendarInput from "../../components/ui/BSCalendarInput";
 
@@ -298,10 +299,11 @@ const response = (await axiosInstance.get("/employees")) as unknown as { data: I
       {/* Search + filters in same row: search left, selects right */}
       <div className="bg-white rounded-2xl border border-border shadow-sm p-4 flex flex-col lg:flex-row lg:items-end gap-3">
         <div className="flex-1">
-          <span className="block text-[11px] font-medium text-slate-500 mb-1">Search</span>
+          <label htmlFor="emp-search-input" className="block text-[11px] font-medium text-slate-500 mb-1">Search</label>
           <div className="relative">
             <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
+              id="emp-search-input"
               type="text"
               value={searchQuery}
               placeholder="Search by name, email, ID, department, branch..."
@@ -314,8 +316,9 @@ const response = (await axiosInstance.get("/employees")) as unknown as { data: I
           </div>
         </div>
         <div className="w-full lg:w-52 shrink-0">
-          <span className="block text-[11px] font-medium text-slate-500 mb-1">Branch</span>
+          <label htmlFor="emp-branch-filter" className="block text-[11px] font-medium text-slate-500 mb-1">Branch</label>
           <select
+            id="emp-branch-filter"
             value={branchFilter}
             onChange={(e) => handleBranchFilter(e.target.value)}
             disabled={!!scopedBranchId}
@@ -334,8 +337,9 @@ const response = (await axiosInstance.get("/employees")) as unknown as { data: I
           </select>
         </div>
         <div className="w-full lg:w-52 shrink-0">
-          <span className="block text-[11px] font-medium text-slate-500 mb-1">Department</span>
+          <label htmlFor="emp-dept-filter" className="block text-[11px] font-medium text-slate-500 mb-1">Department</label>
           <select
+            id="emp-dept-filter"
             value={departmentFilter}
             onChange={(e) => handleDepartmentFilter(e.target.value)}
             disabled={!branchFilter}
@@ -397,16 +401,16 @@ const response = (await axiosInstance.get("/employees")) as unknown as { data: I
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-1">
-                          <button onClick={() => setViewEmployee(emp)} className="p-2 rounded-xl text-primary hover:bg-secondary transition-colors" title="View profile">
+                          <button type="button" onClick={() => setViewEmployee(emp)} aria-label={`View profile of ${emp.name}`} className="p-2 rounded-xl text-primary hover:bg-secondary transition-colors" title="View profile">
                             <Eye size={16} />
                           </button>
                           {canEditEmployees && (
-                            <button onClick={() => setEditEmployee(emp)} className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors" title="Edit employee">
+                            <button type="button" onClick={() => setEditEmployee(emp)} aria-label={`Edit ${emp.name}`} className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors" title="Edit employee">
                               <Edit3 size={16} />
                             </button>
                           )}
                           {canManageEmployees && (
-                            <button onClick={() => setDeleteTarget(emp)} className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors" title="Delete employee">
+                            <button type="button" onClick={() => setDeleteTarget(emp)} aria-label={`Delete ${emp.name}`} className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors" title="Delete employee">
                               <Trash2 size={16} />
                             </button>
                           )}
@@ -425,6 +429,7 @@ const response = (await axiosInstance.get("/employees")) as unknown as { data: I
                 <label className="flex items-center gap-1.5 text-xs text-slate-400">
                   Show
                   <select
+                    aria-label="Employees per page"
                     value={pageSize}
                     onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
                     className="border border-border rounded-lg px-2 py-1 bg-white text-xs outline-none focus:border-primary"
@@ -438,6 +443,8 @@ const response = (await axiosInstance.get("/employees")) as unknown as { data: I
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
+                  aria-label="Previous page"
                   onClick={() => setPage(Math.max(1, currentPage - 1))}
                   disabled={currentPage <= 1}
                   className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-secondary/30 disabled:opacity-30 transition-colors"
@@ -447,6 +454,9 @@ const response = (await axiosInstance.get("/employees")) as unknown as { data: I
                 {Array.from({ length: totalPages }, (_, i) => i + 1).map((pg) => (
                   <button
                     key={pg}
+                    type="button"
+                    aria-label={`Page ${pg}`}
+                    aria-current={pg === currentPage ? "page" : undefined}
                     onClick={() => setPage(pg)}
                     className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
                       pg === currentPage
@@ -458,6 +468,8 @@ const response = (await axiosInstance.get("/employees")) as unknown as { data: I
                   </button>
                 ))}
                 <button
+                  type="button"
+                  aria-label="Next page"
                   onClick={() => setPage(Math.min(totalPages, currentPage + 1))}
                   disabled={currentPage >= totalPages}
                   className="p-2 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-secondary/30 disabled:opacity-30 transition-colors"
@@ -534,12 +546,20 @@ const response = (await axiosInstance.get("/employees")) as unknown as { data: I
 // View employee profile modal
 function ViewEmployeeProfile({ employee, onClose }: { employee: IEmployeeData; onClose: () => void }) {
   const calPref = useCalendarPreference();
+  const modalRef = useModalAccessibility<HTMLDivElement>(onClose);
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Employee Profile"
+        tabIndex={-1}
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto outline-none"
+      >
         <div className="flex items-center justify-between p-6 border-b border-slate-100">
           <h3 className="font-bold text-lg text-slate-900">Employee Profile</h3>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">
+          <button type="button" onClick={onClose} aria-label="Close employee profile" className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">
             <X size={20} />
           </button>
         </div>
@@ -565,7 +585,7 @@ function ViewEmployeeProfile({ employee, onClose }: { employee: IEmployeeData; o
             <ProfileRow icon={User} label="Manager" value={employee.manager?.name || "Not assigned"} />
             <ProfileRow icon={MapPin} label="Branch" value={employee.branch?.name || "Not assigned"} />
             <ProfileRow icon={User} label="Gender" value={employee.gender ? employee.gender.charAt(0).toUpperCase() + employee.gender.slice(1) : "Not set"} />
-            <ProfileRow icon={Calendar} label="Joining Date" value={employee.joiningDate ? formatDate(new Date(employee.joiningDate), calPref) : "-"} />
+            <ProfileRow icon={Calendar} label="Joining Date" value={employee.joiningDate ? formatDate(parseLocalDate(employee.joiningDate), calPref) : "-"} />
           </div>
         </div>
       </div>
@@ -665,6 +685,7 @@ function CreateEmployeeModal({
   const [employees, setEmployees] = useState<{ _id: string; name: string }[]>([]);
   // photo - select garda instant preview, create pachhi upload huncha
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const modalRef = useModalAccessibility<HTMLDivElement>(onClose);
 
   // Auto-save form changes to localStorage draft
   useEffect(() => {
@@ -851,7 +872,14 @@ function CreateEmployeeModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Add New Employee"
+        tabIndex={-1}
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto outline-none"
+      >
         <div className="flex items-center justify-between p-6 border-b border-slate-100">
           <div className="flex items-center gap-2.5 flex-wrap">
             <h3 className="font-bold text-lg text-slate-900">Add New Employee</h3>
@@ -872,7 +900,7 @@ function CreateEmployeeModal({
                 <RotateCcw size={13} /> Clear
               </button>
             )}
-            <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
+            <button type="button" onClick={onClose} aria-label="Close modal" className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
           </div>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -909,28 +937,29 @@ function CreateEmployeeModal({
           />
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Employee ID</label>
-              <input type="text" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+              <label htmlFor="create-emp-id" className="block text-sm font-medium text-slate-700 mb-1">Employee ID</label>
+              <input id="create-emp-id" type="text" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
-              <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={15} minLength={7} placeholder="Numbers only" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "") })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+              <label htmlFor="create-emp-name" className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+              <input id="create-emp-name" type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+              <label htmlFor="create-emp-email" className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+              <input id="create-emp-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+            </div>
+            <div>
+              <label htmlFor="create-emp-phone" className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+              <input id="create-emp-phone" type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={15} minLength={7} placeholder="Numbers only" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "") })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="create-emp-role" className="block text-sm font-medium text-slate-700 mb-1">Role</label>
               <select
+                id="create-emp-role"
                 value="employee"
                 disabled
                 className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none bg-slate-100 text-slate-400"
@@ -952,9 +981,9 @@ function CreateEmployeeModal({
               required
             />
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Joining Date</label>
               <BSCalendarInput
-                value={form.joiningDate ? new Date(form.joiningDate) : null}
+                label="Joining Date"
+                value={form.joiningDate ? parseLocalDate(form.joiningDate) : null}
                 onChange={(d) => setForm({ ...form, joiningDate: d ? toLocalDateInput(d) : "" })}
                 placeholder="Select joining date"
               />
@@ -990,8 +1019,8 @@ function CreateEmployeeModal({
           </div>
           {/* Manager select - employee ko lagi */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Reporting Manager (Optional)</label>
-            <select value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white">
+            <label htmlFor="create-emp-manager" className="block text-sm font-medium text-slate-700 mb-1">Reporting Manager (Optional)</label>
+            <select id="create-emp-manager" value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white">
               <option value="">No Manager (Reports directly to Admin / HR)</option>
               {employees.map((emp) => <option key={emp._id} value={emp._id}>{emp.name}</option>)}
             </select>
@@ -1039,6 +1068,7 @@ function EditEmployeeModal({ employee, onClose, onUpdated, lockedBranch, manager
   // photo - select garda instant preview, save pachhi upload/delete huncha
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [removeRequested, setRemoveRequested] = useState(false);
+  const editModalRef = useModalAccessibility<HTMLDivElement>(onClose);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -1146,10 +1176,17 @@ function EditEmployeeModal({ employee, onClose, onUpdated, lockedBranch, manager
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+      <div
+        ref={editModalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit Employee"
+        tabIndex={-1}
+        className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto outline-none"
+      >
         <div className="flex items-center justify-between p-6 border-b border-slate-100">
           <h3 className="font-bold text-lg text-slate-900">Edit Employee</h3>
-          <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
+          <button type="button" onClick={onClose} aria-label="Close modal" className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Photo upload - super_admin/hr_admin lai matra; manager lai readonly avatar */}
@@ -1182,17 +1219,17 @@ function EditEmployeeModal({ employee, onClose, onUpdated, lockedBranch, manager
             />
           )}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
-            <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+            <label htmlFor="edit-emp-name" className="block text-sm font-medium text-slate-700 mb-1">Full Name</label>
+            <input id="edit-emp-name" type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
-              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+              <label htmlFor="edit-emp-email" className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+              <input id="edit-emp-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
-              <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={15} minLength={7} placeholder="Numbers only" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "") })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+              <label htmlFor="edit-emp-phone" className="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+              <input id="edit-emp-phone" type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={15} minLength={7} placeholder="Numbers only" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "") })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -1209,14 +1246,14 @@ function EditEmployeeModal({ employee, onClose, onUpdated, lockedBranch, manager
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
-              <select value="employee" disabled className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none bg-slate-100 text-slate-400">
+              <label htmlFor="edit-emp-role" className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+              <select id="edit-emp-role" value="employee" disabled className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none bg-slate-100 text-slate-400">
                 <option value="employee">Employee</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white">
+              <label htmlFor="edit-emp-status" className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+              <select id="edit-emp-status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white">
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
@@ -1251,8 +1288,8 @@ function EditEmployeeModal({ employee, onClose, onUpdated, lockedBranch, manager
           <div className="grid grid-cols-2 gap-4">
             <GenderSelect value={form.gender} onChange={(v) => setForm({ ...form, gender: v })} required />
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Reporting Manager</label>
-              <select value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })} disabled={managerMode} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white disabled:bg-slate-50 disabled:text-slate-400">
+              <label htmlFor="edit-emp-manager" className="block text-sm font-medium text-slate-700 mb-1">Reporting Manager</label>
+              <select id="edit-emp-manager" value={form.manager} onChange={(e) => setForm({ ...form, manager: e.target.value })} disabled={managerMode} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white disabled:bg-slate-50 disabled:text-slate-400">
                 <option value="">No Manager (Reports directly to Admin / HR)</option>
                 {employees.filter((emp) => emp._id !== employee._id).map((emp) => (
                   <option key={emp._id} value={emp._id}>{emp.name}</option>

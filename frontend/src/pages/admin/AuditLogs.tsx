@@ -13,6 +13,8 @@ interface IAuditLog {
   action: string;
   module: string;
   employee?: { name: string; employeeId: string } | null;
+  oldData?: Record<string, any> | null;
+  newData?: Record<string, any> | null;
   reason?: string | null;
   createdAt: string;
 }
@@ -21,6 +23,11 @@ const MODULES = [
   { value: "attendance", label: "Attendance" },
   { value: "employee", label: "Employee" },
   { value: "user", label: "User" },
+  { value: "branch", label: "Branch" },
+  { value: "department", label: "Department" },
+  { value: "designation", label: "Designation" },
+  { value: "event", label: "Event" },
+  { value: "holiday", label: "Holiday" },
   { value: "leave", label: "Leave" },
   { value: "settings", label: "Settings" },
   { value: "audit", label: "Audit" },
@@ -29,13 +36,34 @@ const MODULES = [
 const ACTIONS = [
   "Attendance Created",
   "Attendance Modified",
+  "Correction Requested",
+  "Correction Approved",
+  "Correction Rejected",
   "Employee Created",
   "Employee Updated",
   "Employee Deleted",
+  "User Created",
   "User Updated",
   "User Deleted",
+  "Branch Created",
+  "Branch Updated",
+  "Branch Deleted",
+  "Department Created",
+  "Department Updated",
+  "Department Deleted",
+  "Designation Created",
+  "Designation Updated",
+  "Designation Deleted",
+  "Event Created",
+  "Event Updated",
+  "Event Deleted",
+  "Holiday Created",
+  "Holiday Updated",
+  "Holiday Deleted",
+  "Leave Requested",
   "Leave Approved",
   "Leave Rejected",
+  "Leave Deleted",
   "Settings Updated",
   "Audit Log Deleted",
   "Audit History Cleared",
@@ -139,11 +167,22 @@ export default function AuditLogs() {
       attendance: "bg-secondary text-primary",
       employee: "bg-secondary text-primary",
       user: "bg-secondary text-primary",
+      branch: "bg-secondary text-primary",
+      department: "bg-secondary text-primary",
+      designation: "bg-secondary text-primary",
+      event: "bg-blue-50 text-blue-700",
+      holiday: "bg-pink-50 text-pink-700",
       leave: "bg-amber-100 text-amber-700",
       settings: "bg-slate-100 text-slate-600",
       audit: "bg-purple-50 text-purple-700",
     };
     return map[mod] || "bg-slate-100 text-slate-600";
+  };
+
+  const targetSummary = (log: IAuditLog) => {
+    const src = log.newData || log.oldData;
+    if (!src) return null;
+    return src.name || src.title || src.companyName || src.email || null;
   };
 
   // action ko icon color
@@ -179,6 +218,7 @@ export default function AuditLogs() {
           <span className="text-xs font-semibold uppercase tracking-wider">Filters</span>
         </div>
         <select
+          aria-label="Filter by module"
           value={moduleFilter}
           onChange={(e) => setModuleFilter(e.target.value)}
           className="border border-border rounded-xl px-3 py-2 text-sm outline-none focus:border-primary bg-white capitalize"
@@ -189,6 +229,7 @@ export default function AuditLogs() {
           ))}
         </select>
         <select
+          aria-label="Filter by action"
           value={actionFilter}
           onChange={(e) => setActionFilter(e.target.value)}
           className="border border-border rounded-xl px-3 py-2 text-sm outline-none focus:border-primary bg-white"
@@ -233,7 +274,11 @@ export default function AuditLogs() {
                   </div>
                   <p className="text-xs text-slate-500 mt-1">
                     By <span className="font-medium">{userDisplayName(log)}</span>
-                    {log.employee && <> · Employee: <span className="font-medium">{log.employee.name}</span> ({log.employee.employeeId})</>}
+                    {log.employee ? (
+                      <> · Employee: <span className="font-medium">{log.employee.name}</span> ({log.employee.employeeId})</>
+                    ) : targetSummary(log) ? (
+                      <> · Target: <span className="font-medium">{targetSummary(log)}</span></>
+                    ) : null}
                     {log.reason && <> · Reason: <span className="italic">{log.reason}</span></>}
                   </p>
                 </div>
@@ -244,6 +289,7 @@ export default function AuditLogs() {
                   <button
                     onClick={() => void handleDelete(log)}
                     disabled={isDeleting || isClearing}
+                    aria-label={`Delete audit log ${log.action}`}
                     className="p-2 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
                     title="Delete this audit log"
                   >

@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import DepartmentService from "../services/DepartmentService.js";
+import AuditLogService from "../services/AuditLogService.js";
 
 class DepartmentController {
     getAll = async (req: Request, res: Response, next: NextFunction) => {
@@ -51,6 +52,21 @@ class DepartmentController {
                 createdBy: req.loggedInUser?._id ?? null,
             });
 
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Department Created",
+                "department",
+                {
+                    targetId: (data as any)?._id?.toString(),
+                    newData: {
+                        name: (data as any)?.name,
+                        code: (data as any)?.code,
+                        description: (data as any)?.description,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
+
             res.status(201).json({
                 data,
                 message: "Department created successfully",
@@ -83,6 +99,22 @@ class DepartmentController {
                 };
             }
 
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Department Updated",
+                "department",
+                {
+                    targetId: id,
+                    newData: {
+                        name: (data as any)?.name,
+                        code: (data as any)?.code,
+                        description: (data as any)?.description,
+                        status: (data as any)?.status,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
+
             res.json({
                 data,
                 message: "Department updated successfully",
@@ -110,6 +142,20 @@ class DepartmentController {
                     message: "Department not found",
                 };
             }
+
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Department Deleted",
+                "department",
+                {
+                    targetId: id,
+                    oldData: {
+                        name: (data as any)?.name,
+                        code: (data as any)?.code,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
 
             res.json({
                 data: null,

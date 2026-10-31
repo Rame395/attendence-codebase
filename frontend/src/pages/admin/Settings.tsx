@@ -169,8 +169,9 @@ export default function Settings() {
           </div>
         </div>
         <div className="p-6">
-          <label className="block text-sm font-medium text-slate-700 mb-1">Company Name</label>
+          <label htmlFor="settings-company-name" className="block text-sm font-medium text-slate-700 mb-1">Company Name</label>
           <input
+            id="settings-company-name"
             type="text"
             maxLength={60}
             value={settings.companyName}
@@ -194,7 +195,7 @@ export default function Settings() {
         </div>
         <div className="p-6 space-y-4">
           {/* preset swatches */}
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3" role="group" aria-label="Brand color presets">
             {BRAND_PRESETS.map((preset) => {
               const selected = settings.brandColor.toUpperCase() === preset.value.toUpperCase();
               return (
@@ -202,6 +203,8 @@ export default function Settings() {
                   key={preset.value}
                   type="button"
                   title={preset.name}
+                  aria-label={`${preset.name} (${preset.value})`}
+                  aria-pressed={selected}
                   onClick={() => {
                     setSettings((s) => ({ ...s, brandColor: preset.value }));
                     applyBrandColor(preset.value);
@@ -222,6 +225,7 @@ export default function Settings() {
             >
               <input
                 type="color"
+                aria-label="Custom brand color"
                 value={isValidBrandColor(settings.brandColor) ? settings.brandColor : DEFAULT_BRAND_COLOR}
                 onChange={(e) => {
                   setSettings((s) => ({ ...s, brandColor: e.target.value.toUpperCase() }));
@@ -239,8 +243,9 @@ export default function Settings() {
               style={{ backgroundColor: isValidBrandColor(settings.brandColor) ? settings.brandColor : DEFAULT_BRAND_COLOR }}
             />
             <div className="flex-1 min-w-[200px]">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Hex code</label>
+              <label htmlFor="settings-brand-hex" className="block text-sm font-medium text-slate-700 mb-1">Hex code</label>
               <input
+                id="settings-brand-hex"
                 type="text"
                 value={settings.brandColor}
                 onChange={(e) => {
@@ -276,8 +281,9 @@ export default function Settings() {
         <div className="p-6 space-y-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Office start time</label>
+              <label htmlFor="settings-start-time" className="block text-sm font-medium text-slate-700 mb-1">Office start time</label>
               <input
+                id="settings-start-time"
                 type="time"
                 value={settings.workingStartTime}
                 onChange={(e) => setSettings({ ...settings, workingStartTime: e.target.value })}
@@ -285,8 +291,9 @@ export default function Settings() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Office end time</label>
+              <label htmlFor="settings-end-time" className="block text-sm font-medium text-slate-700 mb-1">Office end time</label>
               <input
+                id="settings-end-time"
                 type="time"
                 value={settings.workingEndTime}
                 onChange={(e) => setSettings({ ...settings, workingEndTime: e.target.value })}
@@ -294,8 +301,9 @@ export default function Settings() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Late grace period (minutes)</label>
+              <label htmlFor="settings-grace-minutes" className="block text-sm font-medium text-slate-700 mb-1">Late grace period (minutes)</label>
               <input
+                id="settings-grace-minutes"
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
@@ -308,8 +316,9 @@ export default function Settings() {
               <p className="text-[11px] text-slate-400 mt-1">Check-in after office start + grace = Late</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Minimum working minutes</label>
+              <label htmlFor="settings-min-working-minutes" className="block text-sm font-medium text-slate-700 mb-1">Minimum working minutes</label>
               <input
+                id="settings-min-working-minutes"
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
@@ -348,13 +357,15 @@ export default function Settings() {
             </div>
           </div>
         </div>
-        <div className="p-6 flex flex-wrap gap-2">
+        <div className="p-6 flex flex-wrap gap-2" role="group" aria-label="Weekly holidays">
           {DAYS.map((day) => {
             const active = settings.weeklyHolidays.includes(day);
             return (
               <button
                 key={day}
                 type="button"
+                aria-pressed={active}
+                aria-label={`${day.charAt(0).toUpperCase() + day.slice(1)} weekly holiday`}
                 onClick={() => toggleHoliday(day)}
                 className={`px-4 py-2 rounded-xl text-xs font-semibold capitalize transition-colors ${
                   active ? "bg-primary text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useId } from "react";
 import EntityCreateModal from "./EntityCreateModal";
 
 type EntityType = "department" | "designation" | "branch";
@@ -42,6 +42,7 @@ export default function EntityPicker({
   extraPayload,
 }: EntityPickerProps) {
   const [showModal, setShowModal] = useState(false);
+  const selectId = useId();
 
   const ADD_OPTION = `__add_${entity}__`;
 
@@ -57,8 +58,9 @@ export default function EntityPicker({
   return (
     <>
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+        <label htmlFor={selectId} className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
         <select
+          id={selectId}
           value={value}
           onChange={handleSelectChange}
           required={required}

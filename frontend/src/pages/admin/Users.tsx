@@ -24,8 +24,9 @@ import ProfileImageUpload from "../../components/common/ProfileImageUpload";
 import BSCalendarInput from "../../components/ui/BSCalendarInput";
 import type { IProfileImage } from "../../lib/profileImage";
 import { toastApiErrors } from "../../lib/apiErrors";
-import { formatDate, toLocalDateInput } from "../../lib/nepali-date";
+import { formatDate, parseLocalDate, toLocalDateInput } from "../../lib/nepali-date";
 import { useCalendarPreference } from "../../lib/hooks/useCalendarPreference";
+import { useModalAccessibility } from "../../lib/hooks/useModalAccessibility";
 import { useAppSelector } from "../../lib/hooks/redux";
 
 // user photo upload helper - create pachhi call garne
@@ -298,6 +299,7 @@ export default function Users() {
           <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             type="text"
+            aria-label="Search users"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by username, email, role, employee name..."
@@ -309,8 +311,9 @@ export default function Users() {
       {/* Filters: Role + Branch → Department */}
       <div className="bg-white rounded-lg border border-border p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <span className="block text-[11px] font-medium text-gray-500 mb-1">Role</span>
+          <label htmlFor="user-filter-role" className="block text-[11px] font-medium text-gray-500 mb-1">Role</label>
           <select
+            id="user-filter-role"
             value={roleFilter}
             onChange={(e) => handleRoleFilter(e.target.value)}
             className="w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-white outline-none focus:border-primary"
@@ -321,8 +324,9 @@ export default function Users() {
           </select>
         </div>
         <div>
-          <span className="block text-[11px] font-medium text-gray-500 mb-1">Branch</span>
+          <label htmlFor="user-filter-branch" className="block text-[11px] font-medium text-gray-500 mb-1">Branch</label>
           <select
+            id="user-filter-branch"
             value={branchFilter}
             onChange={(e) => handleBranchFilter(e.target.value)}
             className="w-full rounded-lg border border-border px-3 py-2.5 text-sm bg-white outline-none focus:border-primary"
@@ -334,8 +338,9 @@ export default function Users() {
           </select>
         </div>
         <div>
-          <span className="block text-[11px] font-medium text-gray-500 mb-1">Department</span>
+          <label htmlFor="user-filter-department" className="block text-[11px] font-medium text-gray-500 mb-1">Department</label>
           <select
+            id="user-filter-department"
             value={departmentFilter}
             onChange={(e) => handleDepartmentFilter(e.target.value)}
             disabled={!branchFilter}
@@ -429,6 +434,7 @@ export default function Users() {
                             {user.role !== "super_admin" && (
                               <button
                                 onClick={() => setEditingUser(user)}
+                                aria-label={`Edit ${user.username || user.email}`}
                                 className="p-2 rounded-lg text-slate-400 hover:text-primary hover:bg-secondary transition-colors"
                                 title="Edit user"
                               >
@@ -437,6 +443,7 @@ export default function Users() {
                             )}
                             <button
                               onClick={() => setDeleteTarget(user)}
+                              aria-label={`Delete ${user.username || user.email}`}
                               className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
                               title="Delete user"
                             >
@@ -477,6 +484,7 @@ export default function Users() {
                 <button
                   onClick={() => fetchUsers(pagination.page - 1, searchQuery, currentOpts())}
                   disabled={pagination.page <= 1}
+                  aria-label="Previous page"
                   className="p-2 rounded-lg border border-border bg-white text-gray-600 hover:bg-secondary/30 disabled:opacity-30 transition-colors"
                 >
                   <ChevronLeft size={16} />
@@ -497,6 +505,7 @@ export default function Users() {
                 <button
                   onClick={() => fetchUsers(pagination.page + 1, searchQuery, currentOpts())}
                   disabled={pagination.page >= pagination.totalPage}
+                  aria-label="Next page"
                   className="p-2 rounded-lg border border-border bg-white text-gray-600 hover:bg-secondary/30 disabled:opacity-30 transition-colors"
                 >
                   <ChevronRight size={16} />
@@ -551,6 +560,7 @@ export default function Users() {
 
 // Edit user modal - employee profile + role/email/status sabai edit garna milne (Employee sidebar jastai)
 function EditUserModal({ user, onClose, onUpdated, isSuperAdmin, lockedBranch }: { user: IUserData; onClose: () => void; onUpdated: () => void; isSuperAdmin: boolean; lockedBranch?: IOption | null }) {
+  const modalRef = useModalAccessibility(onClose);
   const roleLabels: Record<string, string> = { employee: "Employee", manager: "Manager", hr_admin: "HR / Admin" };
   // Users sidebar: employee bahek - super_admin lai hr_admin+manager, hr_admin lai manager matra
   const baseRoles = isSuperAdmin ? ["manager", "hr_admin"] : ["manager"];
@@ -703,10 +713,16 @@ function EditUserModal({ user, onClose, onUpdated, isSuperAdmin, lockedBranch }:
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-user-modal-title"
+        className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto"
+      >
         <div className="flex items-center justify-between p-6 border-b border-border/50">
-          <h3 className="font-bold text-lg text-gray-900">Edit User</h3>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-secondary/30 text-gray-400">
+          <h3 id="edit-user-modal-title" className="font-bold text-lg text-gray-900">Edit User</h3>
+          <button onClick={onClose} aria-label="Close modal" className="p-2 rounded-lg hover:bg-secondary/30 text-gray-400">
             <X size={20} />
           </button>
         </div>
@@ -736,8 +752,9 @@ function EditUserModal({ user, onClose, onUpdated, isSuperAdmin, lockedBranch }:
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+            <label htmlFor="edit-user-name" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
             <input
+              id="edit-user-name"
               type="text"
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -747,8 +764,9 @@ function EditUserModal({ user, onClose, onUpdated, isSuperAdmin, lockedBranch }:
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <label htmlFor="edit-user-email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
               <input
+                id="edit-user-email"
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
@@ -757,8 +775,9 @@ function EditUserModal({ user, onClose, onUpdated, isSuperAdmin, lockedBranch }:
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+              <label htmlFor="edit-user-phone" className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
               <input
+                id="edit-user-phone"
                 type="tel"
                 inputMode="numeric"
                 pattern="[0-9]*"
@@ -774,8 +793,9 @@ function EditUserModal({ user, onClose, onUpdated, isSuperAdmin, lockedBranch }:
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+              <label htmlFor="edit-user-role" className="block text-sm font-medium text-gray-700 mb-1">Role</label>
               <select
+                id="edit-user-role"
                 value={form.role}
                 onChange={(e) => handleRoleChange(e.target.value)}
                 className="w-full border border-border rounded-lg px-4 py-2.5 text-sm outline-none focus:border-primary bg-white"
@@ -786,8 +806,9 @@ function EditUserModal({ user, onClose, onUpdated, isSuperAdmin, lockedBranch }:
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <label htmlFor="edit-user-status" className="block text-sm font-medium text-gray-700 mb-1">Status</label>
               <select
+                id="edit-user-status"
                 value={form.status}
                 onChange={(e) => setForm({ ...form, status: e.target.value })}
                 className="w-full border border-border rounded-lg px-4 py-2.5 text-sm outline-none focus:border-primary bg-white capitalize"
@@ -811,9 +832,9 @@ function EditUserModal({ user, onClose, onUpdated, isSuperAdmin, lockedBranch }:
             <GenderSelect value={form.gender} onChange={(v) => setForm({ ...form, gender: v })} required />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Joining Date</label>
             <BSCalendarInput
-              value={form.joiningDate ? new Date(form.joiningDate) : null}
+              label="Joining Date"
+              value={form.joiningDate ? parseLocalDate(form.joiningDate) : null}
               onChange={(d) => setForm({ ...form, joiningDate: d ? toLocalDateInput(d) : "" })}
               placeholder="Select joining date"
             />
@@ -874,6 +895,7 @@ function hasUserDraftContent(f: Record<string, string>): boolean {
 
 // Add user modal - role anusar fields
 function AddUserModal({ onClose, onCreated, lockedBranch, isSuperAdmin }: { onClose: () => void; onCreated: () => void; lockedBranch?: IOption | null; isSuperAdmin: boolean }) {
+  const modalRef = useModalAccessibility(onClose);
   // Users sidebar: employee role bahek - super_admin lai hr_admin+manager, hr_admin lai manager matra
   const roleOptions = isSuperAdmin ? ["manager", "hr_admin"] : ["manager"];
   const [draftRestored, setDraftRestored] = useState<boolean>(() => {
@@ -1106,10 +1128,16 @@ function AddUserModal({ onClose, onCreated, lockedBranch, isSuperAdmin }: { onCl
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-user-modal-title"
+        className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto"
+      >
         <div className="flex items-center justify-between p-6 border-b border-border/50">
           <div className="flex items-center gap-2.5 flex-wrap">
-            <h3 className="font-bold text-lg text-gray-900">Add User</h3>
+            <h3 id="add-user-modal-title" className="font-bold text-lg text-gray-900">Add User</h3>
             {draftRestored && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-medium text-amber-700">
                 <Bookmark size={11} /> Draft Restored
@@ -1126,7 +1154,7 @@ function AddUserModal({ onClose, onCreated, lockedBranch, isSuperAdmin }: { onCl
                 <RotateCcw size={13} /> Clear
               </button>
             )}
-            <button onClick={onClose} className="p-2 rounded-lg hover:bg-secondary/30 text-gray-400"><X size={20} /></button>
+            <button onClick={onClose} aria-label="Close modal" className="p-2 rounded-lg hover:bg-secondary/30 text-gray-400"><X size={20} /></button>
           </div>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -1141,28 +1169,29 @@ function AddUserModal({ onClose, onCreated, lockedBranch, isSuperAdmin }: { onCl
           />
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">User ID</label>
-              <input type="text" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+              <label htmlFor="add-user-id" className="block text-sm font-medium text-gray-700 mb-1">User ID</label>
+              <input id="add-user-id" type="text" value={form.employeeId} onChange={(e) => setForm({ ...form, employeeId: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-              <input type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-              <input type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={15} minLength={7} placeholder="Numbers only" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "") })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+              <label htmlFor="add-user-name" className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+              <input id="add-user-name" type="text" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+              <label htmlFor="add-user-email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input id="add-user-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+            </div>
+            <div>
+              <label htmlFor="add-user-phone" className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+              <input id="add-user-phone" type="tel" inputMode="numeric" pattern="[0-9]*" maxLength={15} minLength={7} placeholder="Numbers only" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/\D/g, "") })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="add-user-role" className="block text-sm font-medium text-gray-700 mb-1">Role</label>
               <select
+                id="add-user-role"
                 value={form.role}
                 onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}
                 className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white"
@@ -1187,9 +1216,9 @@ function AddUserModal({ onClose, onCreated, lockedBranch, isSuperAdmin }: { onCl
               required
             />
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Joining Date</label>
               <BSCalendarInput
-                value={form.joiningDate ? new Date(form.joiningDate) : null}
+                label="Joining Date"
+                value={form.joiningDate ? parseLocalDate(form.joiningDate) : null}
                 onChange={(d) => setForm({ ...form, joiningDate: d ? toLocalDateInput(d) : "" })}
                 placeholder="Select joining date"
               />

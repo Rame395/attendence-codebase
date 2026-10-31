@@ -2,7 +2,7 @@ import DesignationModel from "../model/DesignationModel.js";
 
 class DesignationService {
     private static stripEmpty(data: Record<string, unknown>) {
-        return Object.fromEntries(Object.entries(data).filter(([, v]) => v !== ""));
+        return Object.fromEntries(Object.entries(data).filter(([k, v]) => k === "description" || v !== ""));
     }
 
     static async getAllDesignations(department?: string | null, branch?: string | null) {

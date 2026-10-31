@@ -5,6 +5,7 @@ import AttendanceModel from "../model/AttendanceModel.js";
 import LeaveRequestModel from "../model/LeaveRequestModel.js";
 import { getDirectReportIds } from "../utils/branchScope.js";
 import { countActualEmployees } from "../utils/employeeCount.js";
+import { tzDayRange, formatCompanyDate, formatCompanyTime } from "../utils/timezone.js";
 
 class ReportController {
 
@@ -42,12 +43,7 @@ class ReportController {
             const summaryOnly = isTrue(q.summaryOnly);
             const listOnly = isTrue(q.listOnly);
 
-            const today = new Date();
-            const startOfDay = new Date(today);
-            startOfDay.setHours(0, 0, 0, 0);
-
-            const endOfDay = new Date(today);
-            endOfDay.setHours(23, 59, 59, 999);
+            const { start: startOfDay, end: endOfDay } = tzDayRange(new Date());
 
             // manager le aafno direct reports ko data matra dekhxa (team scoped)
             const teamIds = await getDirectReportIds(req.loggedInUser);
@@ -284,13 +280,11 @@ class ReportController {
             const filter: Record<string, any> = {};
 
             if (startDate || endDate) {
-                filter.date = {};
-                if (startDate) filter.date.$gte = new Date(startDate as string);
-                if (endDate) {
-                    const end = new Date(endDate as string);
-                    end.setHours(23, 59, 59, 999);
-                    filter.date.$lte = end;
-                }
+                const effectiveStart = String(startDate || endDate);
+                const effectiveEnd = String(endDate || startDate);
+                const { start } = tzDayRange(effectiveStart);
+                const { end } = tzDayRange(effectiveEnd);
+                filter.date = { $gte: start, $lte: end };
             }
 
             if (branchId) filter.branch = branchId;
@@ -331,9 +325,9 @@ class ReportController {
                 department: a.employee?.department?.name || "",
                 designation: a.employee?.designation?.name || "",
                 branch: a.employee?.branch?.name || "",
-                date: a.date ? new Date(a.date).toLocaleDateString() : "",
-                checkIn: a.checkIn?.time ? new Date(a.checkIn.time).toLocaleTimeString() : "",
-                checkOut: a.checkOut?.time ? new Date(a.checkOut.time).toLocaleTimeString() : "",
+                date: a.date ? formatCompanyDate(a.date) : "",
+                checkIn: a.checkIn?.time ? formatCompanyTime(a.checkIn.time) : "",
+                checkOut: a.checkOut?.time ? formatCompanyTime(a.checkOut.time) : "",
                 status: a.status,
                 workingMinutes: a.workingMinutes || 0,
             }));
@@ -374,7 +368,7 @@ class ReportController {
                 department: e.department?.name || "",
                 designation: e.designation?.name || "",
                 branch: e.branch?.name || "",
-                joiningDate: e.joiningDate ? new Date(e.joiningDate).toLocaleDateString() : "",
+                joiningDate: e.joiningDate ? formatCompanyDate(e.joiningDate) : "",
                 // removed (soft deleted) employee - report ma highlight garna
                 status: e.isDeleted ? "Removed" : e.status,
             }));
@@ -399,9 +393,12 @@ class ReportController {
             if (status) filter.status = status;
 
             if (startDate || endDate) {
-                filter.startDate = {};
-                if (startDate) filter.startDate.$gte = new Date(startDate as string);
-                if (endDate) filter.startDate.$lte = new Date(endDate as string);
+                const effectiveStart = String(startDate || endDate);
+                const effectiveEnd = String(endDate || startDate);
+                const { start } = tzDayRange(effectiveStart);
+                const { end } = tzDayRange(effectiveEnd);
+                filter.startDate = { $lte: end };
+                filter.endDate = { $gte: start };
             }
 
             let leaves = await LeaveRequestModel.find(filter)
@@ -442,8 +439,8 @@ class ReportController {
                 designation: l.employee?.designation?.name || "",
                 branch: l.employee?.branch?.name || "",
                 leaveType: l.leaveType || "",
-                startDate: l.startDate ? new Date(l.startDate).toLocaleDateString() : "",
-                endDate: l.endDate ? new Date(l.endDate).toLocaleDateString() : "",
+                startDate: l.startDate ? formatCompanyDate(l.startDate) : "",
+                endDate: l.endDate ? formatCompanyDate(l.endDate) : "",
                 reason: l.reason || "",
                 status: l.status,
             }));

@@ -244,46 +244,60 @@ export default function DepartmentList() {
               <div className="p-12 text-center text-slate-500">No departments found</div>
             ) : (
               <div className={`grid gap-4 p-6 ${selectedDept ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
-                {pagedDepartments.map((dept) => (
-                  <div
-                    key={dept._id}
-                    onClick={() => handleDeptClick(dept)}
-                    className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
-                      selectedDept?._id === dept._id
-                        ? "border-primary bg-secondary shadow-md shadow-primary/10"
-                        : "border-border hover:border-border hover:shadow-md"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                        selectedDept?._id === dept._id ? "bg-primary text-white" : "bg-secondary text-primary"
-                      }`}>
-                        <Building2 size={18} />
+                {pagedDepartments.map((dept) => {
+                  const isSelected = selectedDept?._id === dept._id;
+                  return (
+                    <div
+                      key={dept._id}
+                      role="button"
+                      tabIndex={0}
+                      aria-expanded={isSelected}
+                      aria-label={`${dept.name} (${dept.code}) — view department members`}
+                      onClick={() => handleDeptClick(dept)}
+                      onKeyDown={(e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          void handleDeptClick(dept);
+                        }
+                      }}
+                      className={`p-5 rounded-2xl border-2 cursor-pointer transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${
+                        isSelected
+                          ? "border-primary bg-secondary shadow-md shadow-primary/10"
+                          : "border-border hover:border-border hover:shadow-md"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                          isSelected ? "bg-primary text-white" : "bg-secondary text-primary"
+                        }`}>
+                          <Building2 size={18} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-bold text-slate-800 truncate">{dept.name}</p>
+                          <p className="text-xs text-slate-500">{dept.code}</p>
+                        </div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-bold text-slate-800 truncate">{dept.name}</p>
-                        <p className="text-xs text-slate-500">{dept.code}</p>
+                      {dept.description && (
+                        <p className="text-xs text-slate-500 mb-3 line-clamp-2">{dept.description}</p>
+                      )}
+                      {dept.branch?.name && (
+                        <p className="text-[11px] text-slate-400 mb-3 inline-flex items-center gap-1">
+                          <MapPin size={11} /> {dept.branch.name}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <button type="button" onClick={(e) => openEdit(dept, e)} aria-label={`Edit ${dept.name}`} className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors" title="Edit">
+                          <Edit3 size={14} />
+                        </button>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); setDeleteTarget(dept); }} aria-label={`Delete ${dept.name}`} className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors" title="Delete">
+                          <Trash2 size={14} />
+                        </button>
+                        <span className="ml-auto text-[11px] text-slate-400">Click to view members</span>
                       </div>
                     </div>
-                    {dept.description && (
-                      <p className="text-xs text-slate-500 mb-3 line-clamp-2">{dept.description}</p>
-                    )}
-                    {dept.branch?.name && (
-                      <p className="text-[11px] text-slate-400 mb-3 inline-flex items-center gap-1">
-                        <MapPin size={11} /> {dept.branch.name}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <button onClick={(e) => openEdit(dept, e)} className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors" title="Edit">
-                        <Edit3 size={14} />
-                      </button>
-                      <button onClick={(e) => { e.stopPropagation(); setDeleteTarget(dept); }} className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors" title="Delete">
-                        <Trash2 size={14} />
-                      </button>
-                      <span className="ml-auto text-[11px] text-slate-400">Click to view members</span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             {!loading && departments.length > 0 && (
@@ -348,7 +362,7 @@ export default function DepartmentList() {
                     <p className="text-xs text-slate-500">{filteredUsers.length} member{filteredUsers.length !== 1 ? "s" : ""}</p>
                   </div>
                 </div>
-                <button onClick={() => setSelectedDept(null)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">
+                <button type="button" onClick={() => setSelectedDept(null)} aria-label="Close department members" className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">
                   <X size={18} />
                 </button>
               </div>
@@ -359,6 +373,7 @@ export default function DepartmentList() {
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
+                    aria-label="Search department members"
                     value={searchUser}
                     onChange={(e) => setSearchUser(e.target.value)}
                     placeholder="Search members..."

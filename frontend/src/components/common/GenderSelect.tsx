@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 // gender dropdown - employee create/edit jasto form haru ma reuse garna milne
 interface IGenderSelectProps {
   value: string;
@@ -20,10 +22,12 @@ export default function GenderSelect({
   className = "",
   required = false,
 }: IGenderSelectProps) {
+  const selectId = useId();
   return (
     <div className={className}>
-      <label className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
+      <label htmlFor={selectId} className="block text-sm font-medium text-slate-700 mb-1">{label}</label>
       <select
+        id={selectId}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         required={required}

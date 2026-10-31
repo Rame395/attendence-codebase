@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import HolidayService from "../services/HolidayService.js";
+import AuditLogService from "../services/AuditLogService.js";
 
 class HolidayController {
     getAll = async (req: Request, res: Response, next: NextFunction) => {
@@ -47,6 +48,21 @@ class HolidayController {
                 createdBy: req.loggedInUser?._id,
             });
 
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Holiday Created",
+                "holiday",
+                {
+                    targetId: (holiday as any)?._id?.toString(),
+                    newData: {
+                        name: (holiday as any)?.name,
+                        date: (holiday as any)?.date,
+                        type: (holiday as any)?.type,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
+
             res.status(201).json({
                 data: holiday,
                 message: "Holiday created successfully",
@@ -74,6 +90,21 @@ class HolidayController {
                 throw { code: 404, message: "Holiday not found" };
             }
 
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Holiday Updated",
+                "holiday",
+                {
+                    targetId: id,
+                    newData: {
+                        name: (holiday as any)?.name,
+                        date: (holiday as any)?.date,
+                        type: (holiday as any)?.type,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
+
             res.json({
                 data: holiday,
                 message: "Holiday updated successfully",
@@ -97,6 +128,20 @@ class HolidayController {
             if (!holiday) {
                 throw { code: 404, message: "Holiday not found" };
             }
+
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Holiday Deleted",
+                "holiday",
+                {
+                    targetId: id,
+                    oldData: {
+                        name: (holiday as any)?.name,
+                        date: (holiday as any)?.date,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
 
             res.json({
                 data: null,

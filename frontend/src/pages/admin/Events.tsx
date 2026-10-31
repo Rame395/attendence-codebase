@@ -3,8 +3,9 @@ import { Plus, Trash2, CalendarDays, X, Edit3, Paperclip, Upload } from "lucide-
 import { toast } from "sonner";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import axiosInstance from "../../config/ApiClient";
-import { formatDate, formatDateShort, toLocalDateInput } from "../../lib/nepali-date";
+import { formatDate, formatDateShort, parseLocalDate, toLocalDateInput } from "../../lib/nepali-date";
 import { useCalendarPreference } from "../../lib/hooks/useCalendarPreference";
+import { useModalAccessibility } from "../../lib/hooks/useModalAccessibility";
 import BSCalendarInput from "../../components/ui/BSCalendarInput";
 import Pagination from "../../components/common/Pagination";
 
@@ -66,6 +67,7 @@ export default function Events() {
   const [branches, setBranches] = useState<{ _id: string; name: string }[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const modalRef = useModalAccessibility(() => setShowModal(false), showModal);
   const totalPages = Math.max(1, Math.ceil(events.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const start = (safePage - 1) * pageSize;
@@ -110,6 +112,7 @@ export default function Events() {
 
   const openEdit = (ev: IEvent) => {
     setEditEvent(ev);
+    const isAll = ev.isForAllEmployees !== false && ev.targetType !== "branch";
     setForm({
       title: ev.title,
       type: ev.type,
@@ -118,8 +121,8 @@ export default function Events() {
       endTime: ev.endTime || "",
       location: ev.location || "",
       description: ev.description || "",
-      isForAllEmployees: ev.isForAllEmployees !== false,
-      targetType: ev.targetType || "all",
+      isForAllEmployees: isAll,
+      targetType: isAll ? "all" : "branch",
       branch: ev.branch?._id || "",
       department: ev.department?._id || "",
       employee: ev.employee?._id || "",
@@ -131,6 +134,10 @@ export default function Events() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.startTime && form.endTime && form.endTime <= form.startTime) {
+      toast.error("End time must be after start time");
+      return;
+    }
     try {
       setSaving(true);
       let eventId: string | null = null;
@@ -243,8 +250,8 @@ export default function Events() {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <p className="text-sm text-slate-700">{formatDate(new Date(ev.date), calPref)}</p>
-                      <p className="text-[11px] text-slate-400">{formatDateShort(new Date(ev.date), calPref === "bs" ? "ad" : "bs")}</p>
+                      <p className="text-sm text-slate-700">{formatDate(parseLocalDate(ev.date), calPref)}</p>
+                      <p className="text-[11px] text-slate-400">{formatDateShort(parseLocalDate(ev.date), calPref === "bs" ? "ad" : "bs")}</p>
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-600">
                       {ev.startTime && <p>{ev.startTime}{ev.endTime ? ` - ${ev.endTime}` : ""}</p>}
@@ -264,8 +271,8 @@ export default function Events() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
-                        <button onClick={() => openEdit(ev)} className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors"><Edit3 size={15} /></button>
-                        <button onClick={() => setDeleteTarget(ev)} className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={15} /></button>
+                        <button onClick={() => openEdit(ev)} aria-label={`Edit ${ev.title}`} title="Edit event" className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors"><Edit3 size={15} /></button>
+                        <button onClick={() => setDeleteTarget(ev)} aria-label={`Delete ${ev.title}`} title="Delete event" className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors"><Trash2 size={15} /></button>
                       </div>
                     </td>
                   </tr>
@@ -281,26 +288,32 @@ export default function Events() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md my-8">
+          <div
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="event-modal-title"
+            className="bg-white rounded-2xl shadow-xl w-full max-w-md my-8"
+          >
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <h3 className="font-bold text-lg text-slate-900">{editEvent ? "Edit Event" : "Add Event"}</h3>
-              <button onClick={() => setShowModal(false)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
+              <h3 id="event-modal-title" className="font-bold text-lg text-slate-900">{editEvent ? "Edit Event" : "Add Event"}</h3>
+              <button onClick={() => setShowModal(false)} aria-label="Close modal" className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
-                <input type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+                <label htmlFor="event-title" className="block text-sm font-medium text-slate-700 mb-1">Title</label>
+                <input id="event-title" type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Type</label>
-                  <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary">
+                  <label htmlFor="event-type" className="block text-sm font-medium text-slate-700 mb-1">Type</label>
+                  <select id="event-type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary">
                     {EVENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <BSCalendarInput
-                  value={form.date ? new Date(form.date) : null}
+                  value={form.date ? parseLocalDate(form.date) : null}
                   onChange={(d) => setForm({ ...form, date: d ? toLocalDateInput(d) : "" })}
                   label="Date"
                   placeholder="Select date"
@@ -309,23 +322,23 @@ export default function Events() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Start time</label>
-                  <input type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" />
+                  <label htmlFor="event-start-time" className="block text-sm font-medium text-slate-700 mb-1">Start time</label>
+                  <input id="event-start-time" type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">End time</label>
-                  <input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" />
+                  <label htmlFor="event-end-time" className="block text-sm font-medium text-slate-700 mb-1">End time</label>
+                  <input id="event-end-time" type="time" value={form.endTime} min={form.startTime || undefined} onChange={(e) => setForm({ ...form, endTime: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Location</label>
-                <input type="text" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" placeholder="e.g. Training Room" />
+                <label htmlFor="event-location" className="block text-sm font-medium text-slate-700 mb-1">Location</label>
+                <input id="event-location" type="text" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" placeholder="e.g. Training Room" />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
-                <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" rows={3} />
+                <label htmlFor="event-description" className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                <textarea id="event-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" rows={3} />
               </div>
 
               {/* Branch scope */}
@@ -335,15 +348,23 @@ export default function Events() {
                   <input
                     type="checkbox"
                     checked={form.isForAllEmployees}
-                    onChange={(e) => setForm({ ...form, isForAllEmployees: e.target.checked, branch: e.target.checked ? "" : form.branch })}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setForm({
+                        ...form,
+                        isForAllEmployees: checked,
+                        targetType: checked ? "all" : "branch",
+                        branch: checked ? "" : form.branch,
+                      });
+                    }}
                     className="rounded border-border text-primary focus:ring-primary"
                   />
                   <span className="text-sm text-slate-700">All employees</span>
                 </label>
                 {!form.isForAllEmployees && (
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Branch (optional)</label>
-                    <select value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white">
+                    <label htmlFor="event-branch" className="block text-sm font-medium text-slate-700 mb-1">Branch (optional)</label>
+                    <select id="event-branch" value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value, targetType: "branch", isForAllEmployees: false })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white">
                       <option value="">All branches</option>
                       {branches.map((b) => <option key={b._id} value={b._id}>{b.name}</option>)}
                     </select>
@@ -353,11 +374,11 @@ export default function Events() {
 
               {/* Attachment upload */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Attachment (optional)</label>
-                <label className="flex items-center gap-2 w-full border border-dashed border-border rounded-xl px-4 py-3 text-sm text-slate-500 cursor-pointer hover:border-primary hover:text-primary transition-colors">
+                <label htmlFor="event-attachment" className="block text-sm font-medium text-slate-700 mb-1">Attachment (optional)</label>
+                <label htmlFor="event-attachment" className="flex items-center gap-2 w-full border border-dashed border-border rounded-xl px-4 py-3 text-sm text-slate-500 cursor-pointer hover:border-primary hover:text-primary transition-colors">
                   <Upload size={16} />
                   <span>{attachmentFile ? attachmentFile.name : "Choose file"}</span>
-                  <input type="file" className="hidden" onChange={(e) => setAttachmentFile(e.target.files?.[0] || null)} />
+                  <input id="event-attachment" type="file" className="hidden" onChange={(e) => setAttachmentFile(e.target.files?.[0] || null)} />
                 </label>
               </div>
 

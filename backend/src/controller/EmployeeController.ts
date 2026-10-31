@@ -239,7 +239,7 @@ class EmployeeController {
         });
 
       // audit log - employee created
-      AuditLogService.logAction(
+      await AuditLogService.logAction(
         createdBy?.toString(),
         "Employee Created",
         "employee",
@@ -382,7 +382,7 @@ class EmployeeController {
         emailReleased = true;
 
         // audit log - employee updated (status change include garne)
-        AuditLogService.logAction(
+        await AuditLogService.logAction(
           req.loggedInUser?._id?.toString(),
           "Employee Updated",
           "employee",
@@ -496,7 +496,7 @@ res.json({
       }
 
       // audit log - employee deleted
-      AuditLogService.logAction(
+      await AuditLogService.logAction(
         req.loggedInUser?._id?.toString(),
         "Employee Deleted",
         "employee",

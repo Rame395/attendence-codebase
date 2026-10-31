@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import BranchService from "../services/BranchService.js";
+import AuditLogService from "../services/AuditLogService.js";
 
 class BranchController {
     getAll = async (req: Request, res: Response, next: NextFunction) => {
@@ -50,6 +51,21 @@ class BranchController {
                 createdBy: req.loggedInUser?._id ?? null,
             });
 
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Branch Created",
+                "branch",
+                {
+                    targetId: (data as any)?._id?.toString(),
+                    newData: {
+                        name: (data as any)?.name,
+                        code: (data as any)?.code,
+                        address: (data as any)?.address,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
+
             res.status(201).json({
                 data,
                 message: "Branch created successfully",
@@ -81,6 +97,22 @@ class BranchController {
                 };
             }
 
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Branch Updated",
+                "branch",
+                {
+                    targetId: id,
+                    newData: {
+                        name: (data as any)?.name,
+                        code: (data as any)?.code,
+                        address: (data as any)?.address,
+                        status: (data as any)?.status,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
+
             res.json({
                 data,
                 message: "Branch updated successfully",
@@ -108,6 +140,20 @@ class BranchController {
                     message: "Branch not found",
                 };
             }
+
+            await AuditLogService.logAction(
+                req.loggedInUser?._id?.toString(),
+                "Branch Deleted",
+                "branch",
+                {
+                    targetId: id,
+                    oldData: {
+                        name: (data as any)?.name,
+                        code: (data as any)?.code,
+                    },
+                    ipAddress: req.ip,
+                },
+            );
 
             res.json({
                 data: null,

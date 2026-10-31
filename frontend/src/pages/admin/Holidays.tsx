@@ -3,8 +3,9 @@ import { Plus, Trash2, Edit3, CalendarDays, X, Building2, Globe2 } from "lucide-
 import { toast } from "sonner";
 import ConfirmDialog from "../../components/ui/ConfirmDialog";
 import axiosInstance from "../../config/ApiClient";
-import { addDays, formatDate, toLocalDateInput } from "../../lib/nepali-date";
+import { addDays, formatDate, parseLocalDate, toLocalDateInput } from "../../lib/nepali-date";
 import { useCalendarPreference } from "../../lib/hooks/useCalendarPreference";
+import { useModalAccessibility } from "../../lib/hooks/useModalAccessibility";
 import BSCalendarInput from "../../components/ui/BSCalendarInput";
 import Pagination from "../../components/common/Pagination";
 
@@ -47,14 +48,14 @@ const emptyForm: IForm = {
 
 const fmtDate = (d?: string | null, calPref: "bs" | "ad" = "bs") => {
   if (!d) return "-";
-  const dt = new Date(d);
+  const dt = parseLocalDate(d);
   return isNaN(dt.getTime()) ? "-" : formatDate(dt, calPref);
 };
 
 // date input le "YYYY-MM-DD" (local time) maagchha - ISO convert garda date shift hunna bhanera
 const toDateInput = (d?: string | null) => {
   if (!d) return "";
-  const dt = new Date(d);
+  const dt = parseLocalDate(d);
   if (isNaN(dt.getTime())) return "";
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 };
@@ -71,6 +72,7 @@ export default function Holidays() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<IHoliday | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const modalRef = useModalAccessibility(() => setShowModal(false), showModal);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const totalPages = Math.max(1, Math.ceil(holidays.length / pageSize));
@@ -277,10 +279,10 @@ export default function Holidays() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-1">
-                        <button onClick={() => openEdit(h)} className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors" title="Edit holiday">
+                        <button onClick={() => openEdit(h)} aria-label={`Edit ${h.title}`} className="p-2 rounded-xl text-amber-500 hover:bg-amber-50 transition-colors" title="Edit holiday">
                           <Edit3 size={16} />
                         </button>
-                        <button onClick={() => setDeleteTarget(h)} className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors" title="Delete holiday">
+                        <button onClick={() => setDeleteTarget(h)} aria-label={`Delete ${h.title}`} className="p-2 rounded-xl text-red-500 hover:bg-red-50 transition-colors" title="Delete holiday">
                           <Trash2 size={16} />
                         </button>
                       </div>
@@ -298,20 +300,26 @@ export default function Holidays() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg my-8">
+          <div
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="holiday-modal-title"
+            className="bg-white rounded-2xl shadow-xl w-full max-w-lg my-8"
+          >
             <div className="flex items-center justify-between p-6 border-b border-slate-100">
-              <h3 className="font-bold text-lg text-slate-900">{editHoliday ? "Edit Holiday" : "Add Holiday"}</h3>
-              <button onClick={() => setShowModal(false)} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
+              <h3 id="holiday-modal-title" className="font-bold text-lg text-slate-900">{editHoliday ? "Edit Holiday" : "Add Holiday"}</h3>
+              <button onClick={() => setShowModal(false)} aria-label="Close modal" className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Title</label>
-                <input type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Dashain Holiday, Women's Day" className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
+                <label htmlFor="holiday-title" className="block text-sm font-medium text-slate-700 mb-1">Title</label>
+                <input id="holiday-title" type="text" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Dashain Holiday, Women's Day" className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" required />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <BSCalendarInput
-                  value={form.startDate ? new Date(form.startDate) : null}
+                  value={form.startDate ? parseLocalDate(form.startDate) : null}
                   onChange={(d) => {
                     const s = d ? toLocalDateInput(d) : "";
                     // end start sanga same / aghi bhayo bhane clear (single-day = end khali)
@@ -323,14 +331,14 @@ export default function Holidays() {
                   }}
                   label="Start Date"
                   placeholder="Select start"
-                  max={form.endDate ? addDays(new Date(form.endDate), -1) : undefined}
+                  max={form.endDate ? addDays(parseLocalDate(form.endDate), -1) : undefined}
                 />
                 <BSCalendarInput
-                  value={form.endDate ? new Date(form.endDate) : null}
+                  value={form.endDate ? parseLocalDate(form.endDate) : null}
                   onChange={(d) => setForm({ ...form, endDate: d ? toLocalDateInput(d) : "" })}
                   label="End Date"
                   placeholder="Optional - single day"
-                  min={form.startDate ? addDays(new Date(form.startDate), 1) : undefined}
+                  min={form.startDate ? addDays(parseLocalDate(form.startDate), 1) : undefined}
                 />
               </div>
 
@@ -388,8 +396,8 @@ export default function Holidays() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Description (optional)</label>
-                <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" rows={2} />
+                <label htmlFor="holiday-description" className="block text-sm font-medium text-slate-700 mb-1">Description (optional)</label>
+                <textarea id="holiday-description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="w-full border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary" rows={2} />
               </div>
 
               <div className="flex gap-3 pt-2">
