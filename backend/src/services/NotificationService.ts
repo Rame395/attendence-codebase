@@ -1,6 +1,9 @@
 import NotificationModel from "../model/NotificationModel.js";
 import UserModel from "../model/UserModel.js";
 import EmployeeModel from "../model/EmployeeModel.js";
+import LeaveRequestModel from "../model/LeaveRequestModel.js";
+import AttendanceCorrectionModel from "../model/AttendanceCorrectionModel.js";
+import { getDirectReportIds } from "../utils/branchScope.js";
 
 // notification ko service - sabai notification create/read garna use hunxa
 class NotificationService {
@@ -30,6 +33,85 @@ class NotificationService {
 
     static async getUnreadCount(userId: string) {
         return await NotificationModel.countDocuments({ user: userId, isRead: false });
+    }
+
+    // sidebar tabs ko badge counts (+1, +2) ekaichoti calculate garne
+    static async getBadgeCounts(loggedInUser: any) {
+        const userId = loggedInUser?._id?.toString();
+        if (!userId) {
+            return { notifications: 0, leaves: 0, corrections: 0, events: 0 };
+        }
+
+        const role = loggedInUser.role;
+
+        // 1. Unread notifications count
+        const notificationsPromise = NotificationModel.countDocuments({ user: userId, isRead: false });
+
+        // 2. Events: unread event announcements
+        const eventsPromise = NotificationModel.countDocuments({
+            user: userId,
+            isRead: false,
+            type: "event",
+        });
+
+        // 3. Leaves & Corrections
+        let leavesPromise: Promise<number>;
+        let correctionsPromise: Promise<number>;
+
+        if (role === "super_admin" || role === "hr_admin" || role === "manager") {
+            // Admin / Manager perspective: Pending requests awaiting approval
+            if (role === "manager") {
+                // manager ko team ko pending requests matra
+                leavesPromise = (async () => {
+                    const teamIds = await getDirectReportIds(loggedInUser);
+                    if (!teamIds || teamIds.length === 0) return 0;
+                    return await LeaveRequestModel.countDocuments({
+                        status: "pending",
+                        employee: { $in: teamIds },
+                    });
+                })();
+
+                correctionsPromise = (async () => {
+                    const teamIds = await getDirectReportIds(loggedInUser);
+                    if (!teamIds || teamIds.length === 0) return 0;
+                    return await AttendanceCorrectionModel.countDocuments({
+                        status: "pending",
+                        employee: { $in: teamIds },
+                    });
+                })();
+            } else {
+                // super_admin / hr_admin: company-wide pending requests
+                leavesPromise = LeaveRequestModel.countDocuments({ status: "pending" });
+                correctionsPromise = AttendanceCorrectionModel.countDocuments({ status: "pending" });
+            }
+        } else {
+            // Employee perspective: unread decision notifications (approved/rejected)
+            leavesPromise = NotificationModel.countDocuments({
+                user: userId,
+                isRead: false,
+                type: { $in: ["leave_approved", "leave_rejected"] },
+            });
+
+            correctionsPromise = NotificationModel.countDocuments({
+                user: userId,
+                isRead: false,
+                type: { $in: ["correction_approved", "correction_rejected"] },
+            });
+        }
+
+        const [notifications, leaves, corrections, events] = await Promise.all([
+            notificationsPromise,
+            leavesPromise,
+            correctionsPromise,
+            eventsPromise,
+        ]);
+
+        return {
+            notifications,
+            leaves,
+            corrections,
+            events,
+        };
     }
 
     static async markAsRead(notificationId: string, userId: string) {

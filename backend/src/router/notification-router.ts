@@ -7,6 +7,7 @@ const controller = new NotificationController();
 
 router.get("/", checkLogin(), controller.getMy);
 router.get("/unread-count", checkLogin(), controller.unreadCount);
+router.get("/badge-counts", checkLogin(), controller.badgeCounts);
 router.put("/read-all", checkLogin(), controller.markAllAsRead);
 router.put("/:id/read", checkLogin(), controller.markAsRead);
 router.delete("/all", checkLogin(), controller.clearAll);

@@ -41,6 +41,22 @@ class NotificationController {
         }
     };
 
+    badgeCounts = async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            if (!req.loggedInUser?._id) throw { code: 401, message: "User not authenticated" };
+
+            const badges = await NotificationService.getBadgeCounts(req.loggedInUser);
+
+            res.json({
+                data: badges,
+                message: "Badge counts fetched successfully",
+                meta: null,
+            });
+        } catch (error) {
+            next(error);
+        }
+    };
+
     markAsRead = async (req: Request, res: Response, next: NextFunction) => {
         try {
             const { id } = req.params;

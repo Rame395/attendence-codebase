@@ -47,6 +47,12 @@ export default function AdminLayout() {
     }
   });
   const [unreadCount, setUnreadCount] = useState(0);
+  const [badgeCounts, setBadgeCounts] = useState<{
+    notifications?: number;
+    leaves?: number;
+    corrections?: number;
+    events?: number;
+  }>({});
   const [latestNotes, setLatestNotes] = useState<IHeaderNotification[]>([]);
   const [bellOpen, setBellOpen] = useState(false);
   const knownIdsRef = useRef<Set<string>>(new Set());
@@ -61,10 +67,26 @@ export default function AdminLayout() {
   // header bell ko live data - count + latest list ekai call ma, naya aaye toast float garne
   const pollNotifications = useCallback(async (withToast = true) => {
     try {
-      const res: any = await axiosInstance.get("/notifications");
+      const [res, badgeRes]: [any, any] = await Promise.all([
+        axiosInstance.get("/notifications"),
+        axiosInstance.get("/notifications/badge-counts").catch(() => ({ data: {} })),
+      ]);
       const list: IHeaderNotification[] = res.data || [];
-      setUnreadCount(res.unread ?? list.filter((n) => !n.isRead).length);
+      const unread = res.unread ?? list.filter((n) => !n.isRead).length;
+      setUnreadCount(unread);
       setLatestNotes(list.slice(0, 6));
+
+      if (badgeRes?.data) {
+        setBadgeCounts({
+          notifications: badgeRes.data.notifications ?? unread,
+          leaves: badgeRes.data.leaves ?? 0,
+          corrections: badgeRes.data.corrections ?? 0,
+          events: badgeRes.data.events ?? 0,
+        });
+      } else {
+        setBadgeCounts((prev) => ({ ...prev, notifications: unread }));
+      }
+
       // pahilo poll ma bas seed garne (purano lai toast nagarne)
       if (firstPollRef.current) {
         firstPollRef.current = false;
@@ -106,6 +128,7 @@ export default function AdminLayout() {
   useEffect(() => {
     if (isPlatformAdmin) {
       setUnreadCount(0);
+      setBadgeCounts({});
       setLatestNotes([]);
       return;
     }
@@ -382,6 +405,7 @@ export default function AdminLayout() {
               onClose={() => setSidebarOpen(false)}
               collapsed={sidebarCollapsed}
               onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
+              badgeCounts={badgeCounts}
             />
           )}
 

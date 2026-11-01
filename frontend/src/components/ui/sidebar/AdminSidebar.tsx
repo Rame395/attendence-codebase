@@ -37,10 +37,16 @@ type SidebarProps = {
   onClose: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  badgeCounts?: {
+    notifications?: number;
+    leaves?: number;
+    corrections?: number;
+    events?: number;
+  };
 };
 
 // role-gating AllowAccess wrapper le hunchha (redux based)
-export const AdminSidebar = ({ open, onClose, collapsed, onToggleCollapse }: SidebarProps) => {
+export const AdminSidebar = ({ open, onClose, collapsed, onToggleCollapse, badgeCounts }: SidebarProps) => {
   const { settings } = useAppSelector((state) => state.companySetting);
 
   // Escape key closes drawer on mobile
@@ -65,7 +71,7 @@ export const AdminSidebar = ({ open, onClose, collapsed, onToggleCollapse }: Sid
   }, [open]);
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+    `relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
       collapsed ? "md:justify-center md:px-2.5" : "px-4"
     } ${
       isActive
@@ -76,6 +82,30 @@ export const AdminSidebar = ({ open, onClose, collapsed, onToggleCollapse }: Sid
   // Close drawer when a nav link is clicked (mobile only - harmless on desktop)
   const handleNavClick = () => {
     if (window.innerWidth < 768) onClose();
+  };
+
+  const renderBadge = (count?: number) => {
+    if (!count || count <= 0) return null;
+    const label = count > 99 ? "+99" : `+${count}`;
+    return (
+      <>
+        {/* Full sidebar: pill badge */}
+        <span
+          className={`ml-auto inline-flex items-center justify-center min-w-5 h-5 px-1.5 rounded-full text-[10px] font-bold tracking-tight shrink-0 transition-transform ${
+            collapsed ? "md:hidden" : ""
+          } bg-red-500 text-white shadow-xs`}
+        >
+          {label}
+        </span>
+        {/* Collapsed sidebar: top-right dot indicator */}
+        {collapsed && (
+          <span
+            aria-hidden="true"
+            className="hidden md:block absolute top-1.5 right-1.5 size-2 rounded-full bg-red-500 ring-2 ring-white"
+          />
+        )}
+      </>
+    );
   };
 
   // PWA install menu — employee-only, always visible when not installed (ignores dismissed banner)
@@ -253,6 +283,7 @@ export const AdminSidebar = ({ open, onClose, collapsed, onToggleCollapse }: Sid
                 <NavLink to="/admin/notifications" className={navClass} onClick={handleNavClick} title={collapsed ? "Notifications" : undefined}>
                   <Bell className="size-4 shrink-0" />
                   <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Notifications</span>
+                  {renderBadge(badgeCounts?.notifications)}
                 </NavLink>
               </li>
             </AllowAccess>
@@ -261,6 +292,7 @@ export const AdminSidebar = ({ open, onClose, collapsed, onToggleCollapse }: Sid
                 <NavLink to="/admin/leave" className={navClass} onClick={handleNavClick} title={collapsed ? "Leave Requests" : undefined}>
                   <ClipboardList className="size-4 shrink-0" />
                   <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Leave Requests</span>
+                  {renderBadge(badgeCounts?.leaves)}
                 </NavLink>
               </li>
             </AllowAccess>
@@ -269,6 +301,7 @@ export const AdminSidebar = ({ open, onClose, collapsed, onToggleCollapse }: Sid
                 <NavLink to="/admin/corrections" className={navClass} onClick={handleNavClick} title={collapsed ? "Corrections" : undefined}>
                   <Wrench className="size-4 shrink-0" />
                   <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Corrections</span>
+                  {renderBadge(badgeCounts?.corrections)}
                 </NavLink>
               </li>
             </AllowAccess>
@@ -295,6 +328,7 @@ export const AdminSidebar = ({ open, onClose, collapsed, onToggleCollapse }: Sid
                 <NavLink to="/admin/events" className={navClass} onClick={handleNavClick} title={collapsed ? "Events" : undefined}>
                   <PartyPopper className="size-4 shrink-0" />
                   <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Events</span>
+                  {renderBadge(badgeCounts?.events)}
                 </NavLink>
               </li>
             </AllowAccess>
@@ -337,24 +371,28 @@ export const AdminSidebar = ({ open, onClose, collapsed, onToggleCollapse }: Sid
                 <NavLink to="/employee/leaves" className={navClass} onClick={handleNavClick} title={collapsed ? "My Leaves" : undefined}>
                   <Plane className="size-4 shrink-0" />
                   <span className={`${collapsed ? "md:hidden" : ""} truncate`}>My Leaves</span>
+                  {renderBadge(badgeCounts?.leaves)}
                 </NavLink>
               </li>
               <li>
                 <NavLink to="/employee/events" className={navClass} onClick={handleNavClick} title={collapsed ? "Company Events" : undefined}>
                   <PartyPopper className="size-4 shrink-0" />
                   <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Company Events</span>
+                  {renderBadge(badgeCounts?.events)}
                 </NavLink>
               </li>
               <li>
                 <NavLink to="/employee/notifications" className={navClass} onClick={handleNavClick} title={collapsed ? "Notifications" : undefined}>
                   <Bell className="size-4 shrink-0" />
                   <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Notifications</span>
+                  {renderBadge(badgeCounts?.notifications)}
                 </NavLink>
               </li>
               <li>
                 <NavLink to="/employee/corrections" className={navClass} onClick={handleNavClick} title={collapsed ? "Request Correction" : undefined}>
                   <Wrench className="size-4 shrink-0" />
                   <span className={`${collapsed ? "md:hidden" : ""} truncate`}>Request Correction</span>
+                  {renderBadge(badgeCounts?.corrections)}
                 </NavLink>
               </li>
             </AllowAccess>
