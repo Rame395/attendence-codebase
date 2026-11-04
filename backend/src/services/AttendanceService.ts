@@ -268,6 +268,17 @@ class AttendanceService {
 
         const { today, start, end } = await this.getTodayRange();
 
+        // joining date agadi check-in block
+        if (employee.joiningDate) {
+            const joiningDayStart = tzDayRange(employee.joiningDate).start;
+            if (new Date(start).getTime() < joiningDayStart.getTime()) {
+                throw {
+                    code: 422,
+                    message: "Cannot check in before employee joining date",
+                };
+            }
+        }
+
         // office holiday ma check-in block (gender/branch/department scope anusar -
         // nalaagne holiday bhaye block hudaina, e.g. female-only male lai)
         const dayHoliday: any = await this.getHolidayForEmployee(employee._id, start, end);
@@ -659,12 +670,37 @@ class AttendanceService {
 
         const { start: dayStart, end: dayEnd } = tzDayRange(date);
 
-        const emp: any = await EmployeeModel.findById(employee).select("branch");
+        const emp: any = await EmployeeModel.findById(employee).select("branch joiningDate name employeeId");
         if (!emp) {
             throw { code: 404, message: "Employee not found" };
         }
         if (!emp.branch) {
             throw { code: 422, message: "Employee has no branch assigned" };
+        }
+
+        // joining date agadi attendance mark garda admin override + reason compulsory
+        if (emp.joiningDate) {
+            const joiningDayStart = tzDayRange(emp.joiningDate).start;
+            if (dayStart.getTime() < joiningDayStart.getTime()) {
+                const formattedJoining = emp.joiningDate instanceof Date
+                    ? emp.joiningDate.toISOString().split("T")[0]
+                    : String(emp.joiningDate);
+                if (!data.allowPreJoiningOverride) {
+                    throw {
+                        code: 422,
+                        message: `Selected date is before employee joining date (${formattedJoining}). Admin override required.`,
+                        requiresOverride: true,
+                        joiningDate: formattedJoining,
+                    };
+                }
+                const reason = String(data.overrideReason || data.reason || "").trim();
+                if (!reason) {
+                    throw {
+                        code: 422,
+                        message: "Reason is required when overriding attendance before joining date",
+                    };
+                }
+            }
         }
 
         const checkIn = parseTimeOnDate(date, checkInTime);

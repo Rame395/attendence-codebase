@@ -279,12 +279,16 @@ class ReportController {
 
             const filter: Record<string, any> = {};
 
-            if (startDate || endDate) {
-                const effectiveStart = String(startDate || endDate);
-                const effectiveEnd = String(endDate || startDate);
-                const { start } = tzDayRange(effectiveStart);
-                const { end } = tzDayRange(effectiveEnd);
+            if (startDate && endDate) {
+                const { start } = tzDayRange(String(startDate));
+                const { end } = tzDayRange(String(endDate));
                 filter.date = { $gte: start, $lte: end };
+            } else if (startDate) {
+                const { start } = tzDayRange(String(startDate));
+                filter.date = { $gte: start };
+            } else if (endDate) {
+                const { end } = tzDayRange(String(endDate));
+                filter.date = { $lte: end };
             }
 
             if (branchId) filter.branch = branchId;
@@ -392,13 +396,17 @@ class ReportController {
 
             if (status) filter.status = status;
 
-            if (startDate || endDate) {
-                const effectiveStart = String(startDate || endDate);
-                const effectiveEnd = String(endDate || startDate);
-                const { start } = tzDayRange(effectiveStart);
-                const { end } = tzDayRange(effectiveEnd);
+            if (startDate && endDate) {
+                const { start } = tzDayRange(String(startDate));
+                const { end } = tzDayRange(String(endDate));
                 filter.startDate = { $lte: end };
                 filter.endDate = { $gte: start };
+            } else if (startDate) {
+                const { start } = tzDayRange(String(startDate));
+                filter.endDate = { $gte: start };
+            } else if (endDate) {
+                const { end } = tzDayRange(String(endDate));
+                filter.startDate = { $lte: end };
             }
 
             let leaves = await LeaveRequestModel.find(filter)

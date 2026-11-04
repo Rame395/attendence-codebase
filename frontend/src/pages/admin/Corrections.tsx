@@ -75,16 +75,23 @@ export default function Corrections() {
           <h1 className="text-2xl font-bold text-slate-900">Attendance Corrections</h1>
           <p className="mt-1 text-slate-500">Review employee time-fix requests</p>
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white capitalize"
-        >
-          <option value="">All</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-        </select>
+        <div className="flex items-center gap-2">
+          <label htmlFor="correction-status-filter" className="text-xs font-medium text-slate-500">
+            Status:
+          </label>
+          <select
+            id="correction-status-filter"
+            aria-label="Filter by correction status"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary bg-white capitalize"
+          >
+            <option value="">All</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-border shadow-sm overflow-hidden">
@@ -136,6 +143,7 @@ export default function Corrections() {
                           <button
                             onClick={() => handleReview(r._id, "approved")}
                             disabled={reviewing === r._id}
+                            aria-label={`Approve correction for ${r.employee?.name || "employee"}`}
                             className="px-3 py-1.5 rounded-lg bg-secondary text-primary text-xs font-semibold hover:bg-secondary-hover transition-colors disabled:opacity-50"
                           >
                             Approve
@@ -143,6 +151,7 @@ export default function Corrections() {
                           <button
                             onClick={() => handleReview(r._id, "rejected")}
                             disabled={reviewing === r._id}
+                            aria-label={`Reject correction for ${r.employee?.name || "employee"}`}
                             className="px-3 py-1.5 rounded-lg bg-red-50 text-red-600 text-xs font-semibold hover:bg-red-100 transition-colors disabled:opacity-50"
                           >
                             Reject

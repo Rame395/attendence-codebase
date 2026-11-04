@@ -259,6 +259,8 @@ export default function GeofenceMap({
             <div className="relative flex-1">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
+                id="branch-location-search"
+                aria-label="Search branch location"
                 type="text"
                 value={query}
                 onChange={(e) => {
@@ -305,6 +307,7 @@ export default function GeofenceMap({
                   }}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100"
                   title="Clear search"
+                  aria-label="Clear location search"
                 >
                   <X size={13} />
                 </button>
@@ -312,6 +315,7 @@ export default function GeofenceMap({
             </div>
             <button
               type="button"
+              aria-label="Search location"
               onClick={() => {
                 if (debounceRef.current) {
                   window.clearTimeout(debounceRef.current);

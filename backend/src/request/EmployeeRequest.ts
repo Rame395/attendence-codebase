@@ -10,9 +10,9 @@ const phoneSchema = z
     .max(15, "Phone must be at most 15 digits");
 
 export const CreateEmployeeDTO = z.object({
-    employeeId: z.string().min(2),
-    name: z.string().min(2),
-    email: z.email(),
+    employeeId: z.string().trim().min(2, "Employee ID must be at least 2 characters"),
+    name: z.string().trim().min(2, "Full name must be at least 2 characters"),
+    email: z.string().trim().email(),
     phone: phoneSchema,
     department: z.string().optional(),
     designation: z.string().optional(),
@@ -24,8 +24,8 @@ export const CreateEmployeeDTO = z.object({
 });
 
 export const UpdateEmployeeDTO = z.object({
-    name: z.string().min(2).optional(),
-    email: z.email().optional(),
+    name: z.string().trim().min(2, "Full name must be at least 2 characters").optional(),
+    email: z.string().trim().email().optional(),
     phone: phoneSchema.optional(),
     department: z.string().optional(),
     designation: z.string().optional(),

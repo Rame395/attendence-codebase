@@ -159,6 +159,7 @@ class AttendanceController {
             const record = await AttendanceService.markAttendance(req.body);
 
             // audit log
+            const markReason = req.body.overrideReason?.trim() || req.body.reason?.trim() || undefined;
             await AuditLogService.logAction(
                 req.loggedInUser?._id?.toString(),
                 "Attendance Created",
@@ -166,12 +167,15 @@ class AttendanceController {
                 {
                     targetId: (record?._id as any)?.toString(),
                     employee: req.body.employee,
+                    reason: markReason,
                     newData: {
                         date: req.body.date,
+                        attendanceDate: req.body.date,
                         status: record?.status,
                         checkInTime: req.body.checkInTime ?? null,
                         checkOutTime: req.body.checkOutTime ?? null,
                         workingMinutes: (record as any)?.workingMinutes,
+                        reason: markReason ?? null,
                     },
                     ipAddress: req.ip,
                 },
@@ -205,6 +209,7 @@ class AttendanceController {
             const record = await AttendanceService.updateAttendance(id, req.body);
 
             // audit log
+            const updateReason = req.body.reason ? String(req.body.reason).trim() : undefined;
             await AuditLogService.logAction(
                 req.loggedInUser?._id?.toString(),
                 "Attendance Modified",
@@ -212,17 +217,21 @@ class AttendanceController {
                 {
                     targetId: id,
                     employee: (oldRecord?.employee as any)?._id?.toString(),
+                    reason: updateReason,
                     oldData: {
+                        attendanceDate: oldRecord.date,
                         status: oldRecord.status,
                         checkInTime: oldRecord.checkIn?.time ?? null,
                         checkOutTime: oldRecord.checkOut?.time ?? null,
                         workingMinutes: oldRecord.workingMinutes,
                     },
                     newData: {
+                        attendanceDate: oldRecord.date,
                         status: (record as any)?.status,
                         checkInTime: (record as any)?.checkIn?.time ?? null,
                         checkOutTime: (record as any)?.checkOut?.time ?? null,
                         workingMinutes: (record as any)?.workingMinutes,
+                        reason: updateReason ?? null,
                     },
                     ipAddress: req.ip,
                 },

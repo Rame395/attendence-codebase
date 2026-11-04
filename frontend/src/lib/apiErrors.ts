@@ -21,7 +21,13 @@ export function getApiFieldErrors(error: unknown): string[] {
 
 export function getApiMessage(error: unknown, fallback = "Something went wrong"): string {
   const err = error as ApiErrorShape;
-  return err?.response?.data?.message || err?.data?.message || err?.message || fallback;
+  return (
+    err?.response?.data?.message ||
+    err?.data?.message ||
+    err?.message ||
+    (typeof err?.error === "string" ? err.error : "") ||
+    fallback
+  );
 }
 
 // toast ma field-anusar error dekhaune; details chaina bhane message matra

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarCheck, Clock, MapPin, User, Plus, Pencil } from "lucide-react";
+import { CalendarCheck, Clock, MapPin, User, Plus, Pencil, Building2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../config/ApiClient";
 import { formatDate, formatTime as fmtTime, parseLocalDate, toLocalDateInput } from "../../lib/nepali-date";
@@ -12,7 +12,13 @@ import Pagination from "../../components/common/Pagination";
 // attendance record ko type
 interface IAttendance {
   _id: string;
-  employee?: { _id: string; name: string; employeeId: string; email?: string } | null;
+  employee?: {
+    _id: string;
+    name: string;
+    employeeId: string;
+    email?: string;
+    department?: { name?: string; code?: string } | null;
+  } | null;
   branch?: { name: string } | null;
   date: string;
   checkIn?: { time: string; distance?: number; accuracy?: number } | null;
@@ -24,6 +30,8 @@ interface IAttendance {
 interface IOption {
   _id: string;
   name: string;
+  employeeId?: string;
+  joiningDate?: string;
 }
 
 const STATUS_OPTIONS = [
@@ -43,6 +51,8 @@ interface IMarkForm {
   checkInTime: string; // "HH:mm"
   checkOutTime: string; // "HH:mm"
   status: string;
+  reason?: string;
+  allowPreJoiningOverride?: boolean;
 }
 
 // ISO time bata local "HH:mm" nikalne (edit modal ma prefill garna)
@@ -85,6 +95,7 @@ export default function Attendance() {
 
   // mark/edit modal
   const [showModal, setShowModal] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<IAttendance | null>(null);
   const [saving, setSaving] = useState(false);
   const modalRef = useModalAccessibility(() => setShowModal(false), showModal);
   const [form, setForm] = useState<IMarkForm>({
@@ -94,6 +105,8 @@ export default function Attendance() {
     checkInTime: "",
     checkOutTime: "",
     status: "",
+    reason: "",
+    allowPreJoiningOverride: false,
   });
 
   // mark modal cascading selection (branch → dept → designation → employee)
@@ -257,7 +270,8 @@ export default function Attendance() {
     const fetchAttendance = async () => {
       try {
         setLoading(true);
-        const params: Record<string, string> = { date: dateFilter };
+        const params: Record<string, string> = {};
+        if (dateFilter) params.date = dateFilter;
         if (employeeFilter) params.employeeId = employeeFilter;
         if (departmentFilter) params.departmentId = departmentFilter;
         if (branchFilter) params.branchId = branchFilter;
@@ -277,6 +291,7 @@ export default function Attendance() {
 
   // naya mark modal kholne
   const openMarkModal = () => {
+    setEditingRecord(null);
     setForm({
       attendanceId: null,
       employee: "",
@@ -284,6 +299,8 @@ export default function Attendance() {
       checkInTime: "",
       checkOutTime: "",
       status: "",
+      reason: "",
+      allowPreJoiningOverride: false,
     });
     setModalBranch("");
     setModalDepartment("");
@@ -296,6 +313,7 @@ export default function Attendance() {
 
   // edit modal kholne - record bata prefill garne
   const openEditModal = (rec: IAttendance) => {
+    setEditingRecord(rec);
     setForm({
       attendanceId: rec._id,
       employee: rec.employee?._id ?? "",
@@ -303,6 +321,8 @@ export default function Attendance() {
       checkInTime: toLocalHHmm(rec.checkIn?.time),
       checkOutTime: toLocalHHmm(rec.checkOut?.time),
       status: rec.status || "",
+      reason: "",
+      allowPreJoiningOverride: false,
     });
     setShowModal(true);
   };
@@ -322,6 +342,7 @@ export default function Attendance() {
           checkInTime: form.checkInTime || undefined,
           checkOutTime: form.checkOutTime || undefined,
           ...(form.status ? { status: form.status } : {}),
+          reason: form.reason?.trim() || undefined,
         });
         toast.success("Attendance updated successfully");
       } else {
@@ -356,6 +377,19 @@ export default function Attendance() {
           return;
         }
 
+        const selectedEmp = modalEmployees.find((e) => e._id === form.employee);
+        const empJoining = selectedEmp?.joiningDate ? toLocalDateInput(parseLocalDate(selectedEmp.joiningDate)) : "";
+        const isPreJoining = Boolean(empJoining && form.date < empJoining);
+
+        if (isPreJoining && !form.allowPreJoiningOverride) {
+          toast.error(`Selected date is before joining date (${empJoining}). Please enable override to proceed.`);
+          return;
+        }
+        if (isPreJoining && !form.reason?.trim()) {
+          toast.error("Please provide a reason for overriding pre-joining date attendance");
+          return;
+        }
+
         setSaving(true);
         await axiosInstance.post("/attendance/mark", {
           employee: form.employee,
@@ -363,6 +397,9 @@ export default function Attendance() {
           checkInTime: form.checkInTime || undefined,
           checkOutTime: form.checkOutTime || undefined,
           ...(form.status ? { status: form.status } : {}),
+          allowPreJoiningOverride: form.allowPreJoiningOverride,
+          overrideReason: form.reason?.trim() || undefined,
+          reason: form.reason?.trim() || undefined,
         });
         toast.success("Attendance marked successfully");
       }
@@ -370,7 +407,8 @@ export default function Attendance() {
       setShowModal(false);
 
       // list manually refetch garne (date filter state le trigger gardaina)
-      const params: Record<string, string> = { date: dateFilter };
+      const params: Record<string, string> = {};
+      if (dateFilter) params.date = dateFilter;
       if (employeeFilter) params.employeeId = employeeFilter;
       if (departmentFilter) params.departmentId = departmentFilter;
       if (branchFilter) params.branchId = branchFilter;
@@ -416,8 +454,9 @@ export default function Attendance() {
         <div className="flex items-center gap-3">
           <BSCalendarInput
             value={parseLocalDate(dateFilter)}
-            onChange={(d) => { if (d) setDateFilter(toLocalDateInput(d)); }}
-            label=""
+            onChange={(d) => setDateFilter(d ? toLocalDateInput(d) : "")}
+            label="Attendance Date"
+            placeholder="All dates"
           />
           {canManageAttendance && (
             <button
@@ -647,6 +686,33 @@ export default function Attendance() {
               {form.attendanceId ? "Edit Attendance" : "Mark Attendance"}
             </h2>
 
+            {form.attendanceId && editingRecord && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Target Record</span>
+                  <span className="text-[11px] font-mono text-slate-600 bg-slate-200/80 px-2 py-0.5 rounded">
+                    {editingRecord.employee?.employeeId || "—"}
+                  </span>
+                </div>
+                <div>
+                  <p className="font-bold text-slate-900 text-sm">{editingRecord.employee?.name || "Unknown Employee"}</p>
+                  <p className="text-xs text-slate-500">{editingRecord.employee?.email || ""}</p>
+                </div>
+                <div className="pt-1 border-t border-slate-200/70 flex items-center gap-2 text-xs text-slate-600 flex-wrap">
+                  {editingRecord.employee?.department?.name && (
+                    <span className="inline-flex items-center gap-1 font-medium text-slate-700">
+                      <Building2 size={12} className="text-slate-400" />
+                      {editingRecord.employee.department.name}
+                    </span>
+                  )}
+                  <span className="text-slate-300">•</span>
+                  <span className="font-semibold text-primary">
+                    Date: {formatDate(parseLocalDate(editingRecord.date) || new Date(editingRecord.date), calPref)} ({formatDate(parseLocalDate(editingRecord.date) || new Date(editingRecord.date), "ad")})
+                  </span>
+                </div>
+              </div>
+            )}
+
             {!form.attendanceId && (
               <div className="space-y-3">
                 <p className="text-xs font-medium text-slate-500">Select employee</p>
@@ -723,6 +789,34 @@ export default function Attendance() {
               </div>
             )}
 
+            {!form.attendanceId && (() => {
+              const selectedEmp = modalEmployees.find((e) => e._id === form.employee);
+              const empJoining = selectedEmp?.joiningDate ? toLocalDateInput(parseLocalDate(selectedEmp.joiningDate)) : "";
+              const isPreJoining = Boolean(empJoining && form.date && form.date < empJoining);
+              if (!isPreJoining) return null;
+              return (
+                <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 space-y-2">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                    <span>Warning: Selected date is before employee joining date</span>
+                  </div>
+                  <p className="text-amber-800 text-[11px]">
+                    This employee joined on {selectedEmp?.joiningDate ? formatDate(parseLocalDate(selectedEmp.joiningDate) || new Date(selectedEmp.joiningDate), calPref) : ""}{" "}
+                    ({selectedEmp?.joiningDate ? formatDate(parseLocalDate(selectedEmp.joiningDate) || new Date(selectedEmp.joiningDate), "ad") : ""}). Marking attendance before joining date requires admin override and a reason.
+                  </p>
+                  <label className="flex items-center gap-2 cursor-pointer font-medium text-amber-950 pt-1">
+                    <input
+                      type="checkbox"
+                      checked={form.allowPreJoiningOverride || false}
+                      onChange={(e) => setForm({ ...form, allowPreJoiningOverride: e.target.checked })}
+                      className="rounded text-primary focus:ring-primary"
+                    />
+                    <span>Allow pre-joining date override</span>
+                  </label>
+                </div>
+              );
+            })()}
+
             <div>
               <label htmlFor="att-modal-checkin" className="block text-sm font-medium text-slate-700 mb-1">Check In Time</label>
               <input
@@ -759,6 +853,24 @@ export default function Attendance() {
                   <option key={s} value={s} className="capitalize">{s.replace("_", " ")}</option>
                 ))}
               </select>
+            </div>
+
+            <div>
+              <label htmlFor="att-modal-reason" className="block text-sm font-medium text-slate-700 mb-1">
+                {form.attendanceId ? "Correction / Edit Reason" : "Remarks / Reason"}
+              </label>
+              <textarea
+                id="att-modal-reason"
+                rows={2}
+                value={form.reason || ""}
+                onChange={(e) => setForm({ ...form, reason: e.target.value })}
+                placeholder={
+                  form.attendanceId
+                    ? "Explain why this record is being edited (e.g. forgot check-out)..."
+                    : "Optional note or override justification..."
+                }
+                className="w-full rounded-xl border border-border px-3 py-2 text-sm outline-none focus:border-primary resize-none"
+              />
             </div>
 
             <div className="flex justify-end gap-3 pt-2">

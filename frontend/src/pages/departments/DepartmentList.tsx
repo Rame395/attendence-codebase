@@ -34,17 +34,12 @@ interface IDepartment {
 
 interface IDepartmentUser {
   _id: string;
+  name: string;
+  employeeId: string;
   email: string;
+  phone?: string;
   role: string;
-  employee?: {
-    name: string;
-    employeeId: string;
-    phone: string;
-    department?: {
-      _id: string;
-      name: string;
-    } | null;
-  } | null;
+  designation?: string;
 }
 
 // yo page le departments dekhauxa, edit garna dinxa, click garyo bhane tyo department ka users dekhauxa
@@ -90,7 +85,7 @@ export default function DepartmentList() {
     })();
   }, []);
 
-  // department ma click garepachi tyo department ka users fetch garxa
+  // department ma click garepachi tyo department ka employees fetch garxa (staff + regular employees)
   const handleDeptClick = async (dept: IDepartment) => {
     setSelectedDept(dept);
     setDeptUsers([]);
@@ -98,12 +93,20 @@ export default function DepartmentList() {
     setSearchUser("");
     setMemberPage(1);
     try {
-      const res = await axiosInstance.get("/users", { params: { limit: 100, q: dept.name } });
-      const users = (res.data || []).filter((u: IDepartmentUser) => {
-        const empDept = u.employee?.department;
-        return empDept?.name === dept.name || empDept?._id === dept._id;
+      const res = await axiosInstance.get("/employees", {
+        params: { department: dept._id, includeStaff: "true" },
       });
-      setDeptUsers(users);
+      const employees = res.data || [];
+      const members: IDepartmentUser[] = employees.map((emp: any) => ({
+        _id: emp._id,
+        name: emp.name,
+        employeeId: emp.employeeId,
+        email: emp.email,
+        phone: emp.phone,
+        role: emp.userRole || "employee",
+        designation: emp.designation?.name || "",
+      }));
+      setDeptUsers(members);
     } catch {
       toast.error("Failed to fetch department users");
     } finally {
@@ -153,9 +156,10 @@ export default function DepartmentList() {
     ? deptUsers.filter((u) => {
         const q = searchUser.toLowerCase();
         return (
+          u.name.toLowerCase().includes(q) ||
+          u.employeeId.toLowerCase().includes(q) ||
           u.email.toLowerCase().includes(q) ||
-          u.employee?.name?.toLowerCase().includes(q) ||
-          u.employee?.employeeId?.toLowerCase().includes(q)
+          (u.designation && u.designation.toLowerCase().includes(q))
         );
       })
     : deptUsers;
@@ -393,20 +397,31 @@ export default function DepartmentList() {
                 ) : (
                   <div className="space-y-2">
                     {pagedMembers.map((u) => (
-                      <div key={u._id} className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/30 transition-colors">
-                        <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center font-bold text-sm">
-                          {u.employee?.name?.charAt(0)?.toUpperCase() || u.email.charAt(0).toUpperCase()}
+                      <div
+                        key={u._id}
+                        tabIndex={0}
+                        role="group"
+                        aria-label={`${u.name}, ${u.designation || formatRole(u.role)}`}
+                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/30 focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none transition-colors"
+                      >
+                        <div className="w-9 h-9 rounded-xl bg-primary text-white flex items-center justify-center font-bold text-sm shrink-0">
+                          {u.name?.charAt(0)?.toUpperCase() || "E"}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-slate-800 truncate">{u.employee?.name || u.email}</p>
-                          <p className="text-[11px] text-slate-500 truncate">{u.employee?.employeeId || u.email}</p>
+                          <p className="text-sm font-medium text-slate-800 truncate">{u.name}</p>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            {u.employeeId} {u.designation ? `• ${u.designation}` : ""}
+                          </p>
                         </div>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium ${
-                          u.role === "super_admin" ? "bg-secondary text-primary" :
-                          u.role === "hr_admin" ? "bg-secondary text-primary" :
-                          u.role === "manager" ? "bg-amber-100 text-amber-700" :
-                          "bg-secondary text-primary"
-                        }`}>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium shrink-0 ${
+                            u.role === "manager"
+                              ? "bg-amber-100 text-amber-700"
+                              : u.role === "hr_admin" || u.role === "super_admin"
+                              ? "bg-secondary text-primary"
+                              : "bg-slate-100 text-slate-600"
+                          }`}
+                        >
                           {formatRole(u.role)}
                         </span>
                       </div>

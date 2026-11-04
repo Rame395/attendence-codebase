@@ -21,6 +21,9 @@ export const MarkAttendanceDTO = z.object({
     checkInTime: z.string().optional(),
     checkOutTime: z.string().optional(),
     status: attendanceStatusEnum.optional(),
+    allowPreJoiningOverride: z.boolean().optional(),
+    overrideReason: z.string().optional(),
+    reason: z.string().optional(),
 });
 
 // existing record edit garne
@@ -28,4 +31,6 @@ export const UpdateAttendanceDTO = z.object({
     checkInTime: z.string().optional(),
     checkOutTime: z.string().optional(),
     status: attendanceStatusEnum.optional(),
+    reason: z.string().optional(),
+    workingMinutes: z.number().optional(),
 });

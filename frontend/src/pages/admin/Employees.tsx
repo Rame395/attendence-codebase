@@ -828,6 +828,11 @@ function CreateEmployeeModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!form.name.trim() || form.name.trim().length < 2) {
+      toast.error("Full name must be at least 2 characters");
+      return;
+    }
+
     if (!/^[0-9]{7,15}$/.test(form.phone.trim())) {
       toast.error("Phone must contain numbers only (7-15 digits)");
       return;
@@ -1135,6 +1140,12 @@ function EditEmployeeModal({ employee, onClose, onUpdated, lockedBranch, manager
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!form.name.trim() || form.name.trim().length < 2) {
+      toast.error("Full name must be at least 2 characters");
+      return;
+    }
+
     if (!/^[0-9]{7,15}$/.test(form.phone.trim())) {
       toast.error("Phone must contain numbers only (7-15 digits)");
       return;
@@ -1143,6 +1154,7 @@ function EditEmployeeModal({ employee, onClose, onUpdated, lockedBranch, manager
       setLoading(true);
       const res = await axiosInstance.put(`/employees/${employee._id}`, {
         ...form,
+        name: form.name.trim(),
         branch: lockedBranch?._id || form.branch,
       }) as unknown as { message?: string; temporaryPassword?: string };
 

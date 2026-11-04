@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { History, ShieldCheck, Filter, Trash2 } from "lucide-react";
+import { History, ShieldCheck, Filter, Trash2, ChevronDown, ChevronUp, Calendar } from "lucide-react";
 import { toast } from "sonner";
 import axiosInstance from "../../config/ApiClient";
-import { formatDate } from "../../lib/nepali-date";
+import { formatDate, parseLocalDate, toLocalDateInput } from "../../lib/nepali-date";
 import { useCalendarPreference } from "../../lib/hooks/useCalendarPreference";
 import Pagination from "../../components/common/Pagination";
 
@@ -78,12 +78,61 @@ export default function AuditLogs() {
   const [actionFilter, setActionFilter] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [expandedLogIds, setExpandedLogIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const totalPages = Math.max(1, Math.ceil(logs.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const start = (safePage - 1) * pageSize;
   const pagedLogs = logs.slice(start, start + pageSize);
+
+  const toggleExpand = (id: string) => {
+    setExpandedLogIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const formatExactTime = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      const dateFormatted = formatDate(d, calPref);
+      const timeFormatted = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      return `${dateFormatted} ${timeFormatted}`;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const formatValue = (v: any): string => {
+    if (v === null || v === undefined) return "—";
+    if (typeof v === "boolean") return v ? "true" : "false";
+    if (typeof v === "object") {
+      try {
+        return JSON.stringify(v);
+      } catch {
+        return String(v);
+      }
+    }
+    if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) {
+      try {
+        const d = new Date(v);
+        return `${toLocalDateInput(d)} ${d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
+      } catch {
+        return v;
+      }
+    }
+    return String(v);
+  };
+
+  const getComparisonKeys = (oldData?: Record<string, any> | null, newData?: Record<string, any> | null) => {
+    const keys = new Set<string>();
+    if (oldData && typeof oldData === "object") Object.keys(oldData).forEach((k) => keys.add(k));
+    if (newData && typeof newData === "object") Object.keys(newData).forEach((k) => keys.add(k));
+    return Array.from(keys);
+  };
 
   const fetchLogs = useCallback(async () => {
     try {
@@ -260,44 +309,138 @@ export default function AuditLogs() {
           </div>
         ) : (
           <div className="divide-y divide-slate-50">
-            {pagedLogs.map((log) => (
-              <div key={log._id} className="px-6 py-4 flex items-start gap-4 hover:bg-secondary/30 transition-colors">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${actionIcon(log.action)}`}>
-                  <ShieldCheck size={16} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-slate-800">{log.action}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${moduleColor(log.module)}`}>
-                      {log.module}
-                    </span>
+            {pagedLogs.map((log) => {
+              const expanded = expandedLogIds.has(log._id);
+              const attDate = log.newData?.attendanceDate || log.newData?.date || log.oldData?.attendanceDate || log.oldData?.date;
+              const hasDetails = Boolean(log.oldData || log.newData);
+
+              return (
+                <div key={log._id} className="px-6 py-4 hover:bg-secondary/20 transition-colors">
+                  <div className="flex items-start gap-4">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${actionIcon(log.action)}`}>
+                      <ShieldCheck size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-slate-800">{log.action}</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium capitalize ${moduleColor(log.module)}`}>
+                          {log.module}
+                        </span>
+                        {attDate && (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                            <Calendar size={11} />
+                            Attendance Date: {formatDate(parseLocalDate(attDate) || new Date(attDate), calPref)} ({formatDate(parseLocalDate(attDate) || new Date(attDate), "ad")})
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        By <span className="font-medium">{userDisplayName(log)}</span>
+                        {log.employee ? (
+                          <> · Employee: <span className="font-medium">{log.employee.name}</span> ({log.employee.employeeId})</>
+                        ) : targetSummary(log) ? (
+                          <> · Target: <span className="font-medium">{targetSummary(log)}</span></>
+                        ) : null}
+                        {log.reason && <> · Reason: <span className="italic text-slate-700 font-medium">{log.reason}</span></>}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        <p className="text-xs font-semibold text-slate-700 whitespace-nowrap">
+                          {formatExactTime(log.createdAt)}
+                        </p>
+                        <p className="text-[10px] text-slate-400">
+                          {new Date(log.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                        </p>
+                      </div>
+                      {hasDetails && (
+                        <button
+                          onClick={() => toggleExpand(log._id)}
+                          aria-label={expanded ? "Hide changes" : "View changes"}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-border text-xs font-medium text-slate-600 hover:border-primary hover:text-primary transition-colors"
+                        >
+                          <span>{expanded ? "Hide" : "Details"}</span>
+                          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        </button>
+                      )}
+                      <button
+                        onClick={() => void handleDelete(log)}
+                        disabled={isDeleting || isClearing}
+                        aria-label={`Delete audit log ${log.action}`}
+                        className="p-2 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
+                        title="Delete this audit log"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-500 mt-1">
-                    By <span className="font-medium">{userDisplayName(log)}</span>
-                    {log.employee ? (
-                      <> · Employee: <span className="font-medium">{log.employee.name}</span> ({log.employee.employeeId})</>
-                    ) : targetSummary(log) ? (
-                      <> · Target: <span className="font-medium">{targetSummary(log)}</span></>
-                    ) : null}
-                    {log.reason && <> · Reason: <span className="italic">{log.reason}</span></>}
-                  </p>
+
+                  {expanded && hasDetails && (
+                    <div className="mt-3.5 ml-13 p-3.5 bg-slate-50 border border-slate-200/80 rounded-xl space-y-2.5">
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                        <span>Change Log Comparison</span>
+                        {log.reason && (
+                          <span className="text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[11px]">
+                            Reason: {log.reason}
+                          </span>
+                        )}
+                      </div>
+                      {log.oldData && log.newData ? (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-slate-200 text-slate-500 text-left">
+                                <th className="py-1 px-2 font-medium">Field</th>
+                                <th className="py-1 px-2 font-medium text-slate-600">Before (Old)</th>
+                                <th className="py-1 px-2 font-medium text-slate-600">After (New)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {getComparisonKeys(log.oldData, log.newData).map((k) => {
+                                const oldVal = log.oldData?.[k];
+                                const newVal = log.newData?.[k];
+                                const changed = JSON.stringify(oldVal) !== JSON.stringify(newVal);
+                                return (
+                                  <tr key={k} className={changed ? "bg-amber-50/60" : ""}>
+                                    <td className="py-1.5 px-2 font-mono font-medium text-slate-700 capitalize">
+                                      {k.replace(/([A-Z])/g, " $1")}
+                                    </td>
+                                    <td className="py-1.5 px-2 text-slate-500 line-through">{formatValue(oldVal)}</td>
+                                    <td className={`py-1.5 px-2 font-semibold ${changed ? "text-primary" : "text-slate-700"}`}>
+                                      {formatValue(newVal)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-slate-200 text-slate-500 text-left">
+                                <th className="py-1 px-2 font-medium">Field</th>
+                                <th className="py-1 px-2 font-medium text-slate-600">Value</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {Object.entries(log.newData || log.oldData || {}).map(([k, v]) => (
+                                <tr key={k}>
+                                  <td className="py-1.5 px-2 font-mono font-medium text-slate-700 capitalize">
+                                    {k.replace(/([A-Z])/g, " $1")}
+                                  </td>
+                                  <td className="py-1.5 px-2 font-medium text-slate-800">{formatValue(v)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <p className="text-[11px] text-slate-400 whitespace-nowrap">
-                    {formatDate(new Date(log.createdAt), calPref)}
-                  </p>
-                  <button
-                    onClick={() => void handleDelete(log)}
-                    disabled={isDeleting || isClearing}
-                    aria-label={`Delete audit log ${log.action}`}
-                    className="p-2 rounded-xl text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
-                    title="Delete this audit log"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
         {!loading && logs.length > 0 && (

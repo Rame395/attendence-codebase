@@ -6,7 +6,8 @@ const emptyToUndef = (v: unknown) => (v === "" ? undefined : v);
 export const CreateUserDTO = z.object({
   name: z
     .string()
-    .min(3)
+    .trim()
+    .min(2, "Name must be at least 2 characters")
     .max(50),
 
   email: z.email(),

@@ -89,12 +89,36 @@ class EmployeeService {
       }
     }
 
-    return await EmployeeModel.find(query)
+    const employees = await EmployeeModel.find(query)
       .populate("department", "name code")
       .populate("designation", "name")
       .populate("branch", "name code")
       .populate("manager", "name employeeId")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const empIds = employees.map((e: any) => e._id);
+    if (empIds.length > 0) {
+      const users = await UserModel.find({ employee: { $in: empIds } })
+        .select("employee role email")
+        .lean();
+      const userRoleMap = new Map<string, { role: string; email: string }>();
+      users.forEach((u: any) => {
+        if (u.employee) {
+          userRoleMap.set(u.employee.toString(), { role: u.role, email: u.email });
+        }
+      });
+      return employees.map((e: any) => {
+        const u = userRoleMap.get(e._id.toString());
+        return {
+          ...e,
+          userRole: u?.role || "employee",
+          userEmail: u?.email || e.email,
+        };
+      });
+    }
+
+    return employees;
   }
 
   static async getEmployeeById(id: string) {

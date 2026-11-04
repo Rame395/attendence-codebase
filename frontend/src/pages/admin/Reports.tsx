@@ -92,16 +92,8 @@ export default function Reports() {
   const buildParams = (): Record<string, string> => {
     const params: Record<string, string> = {};
     if (activeReport !== "employee") {
-      if (startDate && endDate) {
-        params.startDate = startDate;
-        params.endDate = endDate;
-      } else if (startDate) {
-        params.startDate = startDate;
-        params.endDate = startDate;
-      } else if (endDate) {
-        params.startDate = endDate;
-        params.endDate = endDate;
-      }
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
     }
     if (branchId) params.branchId = branchId;
     if (departmentId) params.departmentId = departmentId;
@@ -115,7 +107,11 @@ export default function Reports() {
     const dateSuffix =
       startDate && endDate && startDate !== endDate
         ? `${startDate}_to_${endDate}`
-        : startDate || endDate || today;
+        : startDate
+        ? `from_${startDate}`
+        : endDate
+        ? `up_to_${endDate}`
+        : today;
     if (type === "attendance") {
       return { endpoint: "/reports/attendance", filename: `attendance_${dateSuffix}` };
     }
@@ -152,7 +148,11 @@ export default function Reports() {
       const dateRange = activeReport !== "employee"
         ? startDate && endDate && startDate !== endDate
           ? `${startDate} to ${endDate}`
-          : startDate || endDate || "All"
+          : startDate
+          ? `From: ${startDate}`
+          : endDate
+          ? `Up to: ${endDate}`
+          : "All"
         : "All";
 
       // selected filter haru ko name - PDF header ma dekhauna
